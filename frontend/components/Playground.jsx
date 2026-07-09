@@ -79,6 +79,21 @@ export default function Playground({
   const [selectedTutorAction, setSelectedTutorAction] = useState('default');
   const [visualizerMode, setVisualizerMode] = useState('3D'); // '3D' | '2D'
 
+  // Register active playground state for personalized AI bot
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const activeTrace = traceData?.[currentStep];
+      window.__vyomanta_context = {
+        page: 'playground',
+        code: code,
+        currentStep: currentStep,
+        variables: activeTrace?.variables || {},
+        stdout: activeTrace?.stdout || '',
+        error: activeTrace?.error || traceError || ''
+      };
+    }
+  }, [code, currentStep, traceData, traceError]);
+
   const terminalElRef = useRef(null);
   const terminalInstanceRef = useRef(null);
   const fitAddonRef = useRef(null);

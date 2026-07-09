@@ -301,6 +301,25 @@ export default function CodePuzzle() {
   const [playSpeed, setPlaySpeed] = useState(1500); // 1500ms, 1000ms, 500ms
   const [visualizerMode, setVisualizerMode] = useState('2D'); // '2D' | '3D'
 
+  // Register active puzzle state for personalized AI bot
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const activeTrace = traceData?.[currentStep];
+      window.__vyomanta_context = {
+        page: 'code-puzzle',
+        code: code,
+        currentStepIndex: currentStepIndex,
+        currentStep: currentStep,
+        variables: activeTrace?.variables || {},
+        stdout: activeTrace?.stdout || '',
+        error: activeTrace?.error || validationError?.message || '',
+        puzzleTitle: activePuzzle?.title || '',
+        puzzleDesc: activePuzzle?.description || '',
+        stepDescription: activePuzzle?.steps?.[currentStepIndex]?.description || ''
+      };
+    }
+  }, [code, currentStepIndex, currentStep, traceData, validationError, activePuzzle]);
+
   // Terminal refs & resize layouts
   const terminalElRef = useRef(null);
   const terminalInstanceRef = useRef(null);

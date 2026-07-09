@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
 import AdminSidebar from './AdminSidebar';
 import { T } from '@/lib/lms-data';
+import PersonalizedBot from './PersonalizedBot';
 
 export default function LayoutWrapper({ children }) {
   const pathname = usePathname();
@@ -91,6 +92,16 @@ export default function LayoutWrapper({ children }) {
     document.body.style.backgroundColor = theme === 'dark' ? '#07080F' : '#F9FAFB';
   }, []);
 
+  // Sync route path to bot context
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: pathname,
+        title: document.title || 'AI TUTOR Workspace'
+      };
+    }
+  }, [pathname]);
+
   if (loading) {
     return (
       <div style={{
@@ -127,7 +138,7 @@ export default function LayoutWrapper({ children }) {
 
   // Auth pages (like /login) render directly without a sidebar
   if (isAuthPage || !user) {
-    return <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>{children}</div>;
+    return <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>{children}<PersonalizedBot /></div>;
   }
 
   const isAdminRoute = pathname.startsWith('/admin');
@@ -142,6 +153,7 @@ export default function LayoutWrapper({ children }) {
       <div className="sidebar-content-area" style={{ flex: 1, overflowY: 'auto', maxHeight: '100vh' }}>
         {children}
       </div>
+      <PersonalizedBot />
     </div>
   );
 }
