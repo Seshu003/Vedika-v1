@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './resources.css';
 import ResourcesHub from '@/components/ResourcesHub';
 import ResourcesLibrary from '@/components/ResourcesLibrary';
@@ -18,6 +18,17 @@ export default function ResourcesPage() {
     setView(newView);
     setParams(viewParams);
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'resources',
+        title: 'Resources Hub',
+        activeResourceTab: view,
+        activeResourceId: params.id || null
+      };
+    }
+  }, [view, params]);
 
   const renderView = () => {
     switch (view) {

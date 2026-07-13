@@ -123,6 +123,20 @@ export default function ProgressPage({ completed = {} }) {
     loadSyllabus();
   }, [selectedCourseId]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'progress',
+        title: 'Progress Dashboard',
+        quizzesCount,
+        passedQuizzesCount,
+        assignmentsCount,
+        submittedAssignmentsCount,
+        enrolledCoursesCount: enrolledCourses.length
+      };
+    }
+  }, [quizzesCount, passedQuizzesCount, assignmentsCount, submittedAssignmentsCount, enrolledCourses.length]);
+
   // Compute course-specific progress stats
   const modules = selectedCourseSyllabus?.modules || [];
   const courseLessons = modules.flatMap(m => m.lessons || []);

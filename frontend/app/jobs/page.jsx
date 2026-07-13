@@ -46,6 +46,20 @@ export default function StudentJobsPage() {
     return matchesSearch && matchesMode && matchesType;
   });
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'jobs',
+        title: 'Career Opportunities',
+        jobsCount: filteredJobs.length,
+        searchTerm,
+        filterMode,
+        filterType,
+        selectedJobTitle: selectedJob ? selectedJob.title : null
+      };
+    }
+  }, [filteredJobs.length, searchTerm, filterMode, filterType, selectedJob]);
+
   const containerPadding = isMobile ? '70px 16px 32px 16px' : '40px';
 
   return (

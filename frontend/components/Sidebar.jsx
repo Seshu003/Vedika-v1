@@ -389,6 +389,7 @@ export default function Sidebar({ isCollapsed = false, onToggleCollapse }) {
                   return (
                     <button
                       key={id}
+                      id={`sidebar-link-${id.replace(/\//g, '') || 'dashboard'}`}
                       onClick={() => {
                         router.push(id);
                         setDropdownOpen(false);
@@ -611,7 +612,11 @@ export default function Sidebar({ isCollapsed = false, onToggleCollapse }) {
             {NAV.map(({ id, Icon, label }) => {
               const active = isActive(id);
               return (
-                <button key={id} onClick={() => router.push(id)} style={{
+                <button
+                  key={id}
+                  id={`sidebar-link-${id.replace(/\//g, '') || 'dashboard'}`}
+                  onClick={() => router.push(id)}
+                  style={{
                   width: isCollapsed ? 42 : '100%',
                   height: isCollapsed ? 42 : 'auto',
                   display: 'flex',

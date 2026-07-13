@@ -54,6 +54,18 @@ export default function StudentAssignmentsPage() {
     loadData();
   }, [currentUser]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'assignments',
+        title: 'Assignments Dashboard',
+        assignmentsCount: assignments.length,
+        selectedAssignmentTitle: selectedAssignment ? selectedAssignment.title : null,
+        isViewingPrompt
+      };
+    }
+  }, [assignments.length, selectedAssignment, isViewingPrompt]);
+
   const handleOpenPrompt = (ass) => {
     setSelectedAssignment(ass);
     setSuccessMessage('');

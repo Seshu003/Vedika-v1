@@ -77,6 +77,9 @@ function analyzeSentiment(text) {
   return { label: 'Calm / Conversational', score: 0.0, emoji: '\uD83D\uDE10' };
 }
 
+const desktopClients = new Map();
+const webClients = new Map();
+
 nextApp.prepare().then(() => {
   const app = express();
   const server = http.createServer(app);
@@ -104,13 +107,86 @@ nextApp.prepare().then(() => {
   });
 
   wss.on('connection', async (clientWs, request) => {
-    console.log('[WS] Client connected');
     const searchParams = new URL(request.url || '', 'http://localhost').searchParams;
+    const clientType = searchParams.get('clientType') || 'web';
+    const userId = searchParams.get('userId') || 'default-user';
+
+    if (clientType === 'desktop') {
+      desktopClients.set(userId, clientWs);
+      console.log(`[WS] Desktop client connected for user: ${userId}`);
+      
+      // Notify web client
+      let webWs = webClients.get(userId);
+      if (!webWs && webClients.size > 0) {
+        webWs = webClients.values().next().value;
+      }
+      if (webWs && webWs.readyState === 1) {
+        webWs.send(JSON.stringify({ type: 'desktop_status', connected: true }));
+      }
+      
+      clientWs.on('message', (buffer) => {
+        try {
+          const msg = JSON.parse(buffer.toString());
+          if (msg.type === 'control' && msg.action === 'navigateToPage') {
+            console.log(`[WS] Desktop controller requesting navigation to: ${msg.page}`);
+            let webWs = webClients.get(userId);
+            if (!webWs && webClients.size > 0) {
+              // Fallback to first available web client in local setup
+              webWs = webClients.values().next().value;
+            }
+            if (webWs && webWs.readyState === 1) {
+              webWs.send(JSON.stringify({
+                type: 'action',
+                name: 'navigateToPage',
+                args: { page: msg.page }
+              }));
+            }
+          } else if (msg.type === 'chat_command') {
+            console.log(`[WS] Relaying chat command from desktop for user ${userId}: ${msg.text}`);
+            let webWs = webClients.get(userId);
+            if (!webWs && webClients.size > 0) {
+              webWs = webClients.values().next().value;
+            }
+            if (webWs && webWs.readyState === 1) {
+              webWs.send(JSON.stringify({
+                type: 'chat_command',
+                text: msg.text
+              }));
+            }
+          }
+        } catch (e) {
+          console.error('[WS] Desktop client message error:', e);
+        }
+      });
+
+      clientWs.on('close', () => {
+        desktopClients.delete(userId);
+        console.log(`[WS] Desktop client disconnected for user: ${userId}`);
+        let webWs = webClients.get(userId);
+        if (!webWs && webClients.size > 0) {
+          webWs = webClients.values().next().value;
+        }
+        if (webWs && webWs.readyState === 1) {
+          webWs.send(JSON.stringify({ type: 'desktop_status', connected: false }));
+        }
+      });
+      return;
+    }
+
+    // Register Web Client
+    webClients.set(userId, clientWs);
+    console.log(`[WS] Web client connected for user: ${userId}`);
+
+    // Send initial desktop status
+    const desktopConnected = desktopClients.has(userId) || (desktopClients.size > 0);
+    clientWs.send(JSON.stringify({ type: 'desktop_status', connected: desktopConnected }));
+
     const language = searchParams.get('language') || 'all';
     const subject = searchParams.get('subject') || 'all';
 
     let systemInstruction =
-      'You are a friendly, patient, and highly expert academic tutor supporting school students. ' +
+      'You are VEDIKA, a friendly, patient, and highly expert academic tutor supporting school students. ' +
+      'Always refer to yourself as VEDIKA. ' +
       'Your goal is to guide students and encourage their curiosity. ' +
       'Keep answers extremely conversational and concise (usually strictly 1 to 3 sentences maximum) so that it is easy and comfortable to listen to of the speech delivery. ' +
       'Do not output long formulas or dense blocks of texts. Break it down or offer to explain details when they ask. ';
@@ -125,8 +201,9 @@ nextApp.prepare().then(() => {
     else if (subject === 'languages') systemInstruction += ' Currently helping with Languages & Reading! Help expand vocabulary, teach correct grammar, or guide reading comprehensions with interesting sentences.';
     else systemInstruction += ' You are ready to tutor on any academic school subject: math, science, history, geography, languages, or reading.';
 
+    systemInstruction += ' You can navigate the student to different pages (like the code-puzzle tab, playground/coding-tutor, courses list, progress dashboard, resources etc.) using the navigateToPage tool when they ask to open, navigate, start, or go to a page or workspace.';
+
     const sessionId = searchParams.get('sessionId');
-    const userId = searchParams.get('userId');
     const memoryCtx = await loadMemoryContext(sessionId, userId);
     if (memoryCtx) systemInstruction += memoryCtx;
 
@@ -139,6 +216,49 @@ nextApp.prepare().then(() => {
         callbacks: {
           onmessage: (message) => {
             const content = message.serverContent;
+            
+            // Handle Tool Calls
+            const toolCall = message.toolCall || (content && content.toolCall);
+            if (toolCall && toolCall.functionCalls) {
+              for (const call of toolCall.functionCalls) {
+                console.log(`[WS] Gemini requested tool call: ${call.name} with args:`, call.args);
+                clientWs.send(JSON.stringify({ 
+                  type: 'action', 
+                  name: call.name, 
+                  args: call.args 
+                }));
+
+                // Forward tool call to the desktop companion client as well
+                let desktopWs = desktopClients.get(userId);
+                if (!desktopWs && desktopClients.size > 0) {
+                  desktopWs = desktopClients.values().next().value;
+                }
+                if (desktopWs && desktopWs.readyState === 1) {
+                  desktopWs.send(JSON.stringify({
+                    type: 'action',
+                    name: call.name,
+                    args: call.args
+                  }));
+                }
+
+                // Respond immediately back to the session
+                try {
+                  geminiSession.send({
+                    toolResponse: {
+                      functionResponses: [
+                        {
+                          response: { output: { success: true } },
+                          id: call.id
+                        }
+                      ]
+                    }
+                  });
+                } catch (e) {
+                  console.error('[WS] Failed to send tool response:', e);
+                }
+              }
+            }
+
             if (!content) return;
             for (const part of content.modelTurn?.parts || []) {
               if (part.inlineData?.data) {
@@ -170,6 +290,27 @@ nextApp.prepare().then(() => {
           systemInstruction,
           outputAudioTranscription: {},
           inputAudioTranscription: {},
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: 'navigateToPage',
+                  description: 'Navigate the student to a specific page or workspace in the LMS app.',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      page: {
+                        type: 'STRING',
+                        description: 'The target page name, e.g. dashboard, courses, general-tutor, coding-tutor, progress, code-puzzle, quizzes, resources',
+                        enum: ['dashboard', 'courses', 'general-tutor', 'coding-tutor', 'progress', 'code-puzzle', 'quizzes', 'resources']
+                      }
+                    },
+                    required: ['page']
+                  }
+                }
+              ]
+            }
+          ]
         },
       });
 
@@ -187,12 +328,31 @@ nextApp.prepare().then(() => {
         const msg = JSON.parse(buffer.toString());
         if (msg.type === 'audio' && msg.data && geminiSession) {
           geminiSession.sendRealtimeInput({ audio: { data: msg.data, mimeType: 'audio/pcm;rate=16000' } });
+        } else if (msg.type === 'tab_change') {
+          console.log(`[WS] Web client reports tab change to: ${msg.tab} for user ${userId}`);
+          let desktopWs = desktopClients.get(userId);
+          if (!desktopWs && desktopClients.size > 0) {
+            desktopWs = desktopClients.values().next().value;
+          }
+          if (desktopWs && desktopWs.readyState === 1) {
+            desktopWs.send(JSON.stringify({ type: 'tab_change', tab: msg.tab }));
+          }
+        } else if (msg.type === 'speech_response') {
+          console.log(`[WS] Web client relays speech response to desktop for user ${userId}`);
+          let desktopWs = desktopClients.get(userId);
+          if (!desktopWs && desktopClients.size > 0) {
+            desktopWs = desktopClients.values().next().value;
+          }
+          if (desktopWs && desktopWs.readyState === 1) {
+            desktopWs.send(JSON.stringify({ type: 'speech_response', text: msg.text }));
+          }
         }
-      } catch (e) { console.error('[WS] Audio error:', e); }
+      } catch (e) { console.error('[WS] Message handling error:', e); }
     });
 
     clientWs.on('close', () => {
-      console.log('[WS] Client disconnected');
+      console.log(`[WS] Web client disconnected for user: ${userId}`);
+      webClients.delete(userId);
       if (geminiSession) { try { geminiSession.close(); } catch {} }
     });
   });

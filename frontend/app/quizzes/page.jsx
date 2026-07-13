@@ -55,6 +55,18 @@ export default function StudentQuizzesPage() {
     loadData();
   }, [currentUser]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'quizzes',
+        title: 'Quizzes Arena',
+        quizzesCount: quizzes.length,
+        selectedQuizTitle: selectedQuiz ? selectedQuiz.title : null,
+        isAttempting
+      };
+    }
+  }, [quizzes.length, selectedQuiz, isAttempting]);
+
   const handleStartAttempt = (quiz) => {
     setSelectedQuiz(quiz);
     setAnswers(new Array(quiz.questions.length).fill(null));

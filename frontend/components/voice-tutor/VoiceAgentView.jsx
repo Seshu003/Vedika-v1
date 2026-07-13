@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Home, BookOpen, Brain, Code2, BarChart3, Zap, ArrowLeft } from 'lucide-react';
 import { T } from '@/lib/lms-data';
+import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import VoiceChatMessages from './VoiceChatMessages';
 
@@ -46,7 +48,10 @@ function generateLabel(messages, subject) {
 const TEXT_SESSIONS_KEY = 'general-tutor-sessions';
 
 export default function VoiceAgentView({ onClose, initialSession, inline = false, sessionId = null, userId = null, onSessionComplete = null }) {
+  const router = useRouter();
   const [selectedLanguage, setSelectedLanguage] = useState('all');
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navTargetName, setNavTargetName] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [statusMessage, setStatusMessage] = useState('Tap the microphone to start your voice tutoring session');
@@ -315,6 +320,44 @@ export default function VoiceAgentView({ onClose, initialSession, inline = false
           } else if (message.type === 'user-transcription') {
             setConversation((prev) => [...prev, { id: Math.random().toString(36).slice(2), sender: 'student', text: message.text, timestamp: new Date(), sentiment: message.sentiment }]);
             if (message.sentiment) setCurrentSentiment(message.sentiment);
+          } else if (message.type === 'action') {
+            console.log('[WS] Client received action command:', message);
+            if (message.name === 'navigateToPage' && message.args?.page) {
+              const targetPage = message.args.page;
+              let targetRoute = '/';
+              if (targetPage === 'dashboard') targetRoute = '/';
+              else if (targetPage === 'courses') targetRoute = '/courses';
+              else if (targetPage === 'general-tutor') targetRoute = '/general-tutor';
+              else if (targetPage === 'coding-tutor') targetRoute = '/coding-tutor';
+              else if (targetPage === 'progress') targetRoute = '/progress';
+              else if (targetPage === 'code-puzzle') targetRoute = '/code-puzzle';
+              else if (targetPage === 'quizzes') targetRoute = '/quizzes';
+              else if (targetPage === 'resources') targetRoute = '/resources';
+              
+              const routeNames = {
+                '/': 'Dashboard',
+                '/courses': 'Courses Portal',
+                '/general-tutor': 'AI General Tutor',
+                '/coding-tutor': 'AI Coding Tutor',
+                '/progress': 'Progress Dashboard',
+                '/code-puzzle': 'Code Puzzles',
+                '/quizzes': 'Quizzes Arena',
+                '/resources': 'Resources Cheat Sheets'
+              };
+              
+              setNavTargetName(routeNames[targetRoute] || targetPage);
+              setIsNavigating(true);
+              setStatusMessage(`Navigating to ${targetPage}...`);
+              
+              // Safely terminate voice session
+              terminateSession(true);
+              
+              // Wait 1.8 seconds for portal transition to complete before pushing route
+              setTimeout(() => {
+                setIsNavigating(false);
+                router.push(targetRoute);
+              }, 1800);
+            }
           }
         };
 
@@ -754,6 +797,68 @@ export default function VoiceAgentView({ onClose, initialSession, inline = false
             }} />
           </React.Fragment>
         )}
+      {/* Cyber Portal Navigation Transition Overlay */}
+      <AnimatePresence>
+        {isNavigating && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: 'rgba(5, 8, 22, 0.95)',
+              backdropFilter: 'blur(20px)',
+              zIndex: 99999,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: 'var(--font-outfit), sans-serif',
+              color: '#38BDF8',
+              pointerEvents: 'all'
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', damping: 15 }}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}
+            >
+              {/* Animated Pixel Grid Portal */}
+              <div style={{ position: 'relative', width: 100, height: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                  style={{
+                    position: 'absolute',
+                    width: 90,
+                    height: 90,
+                    border: '4px dashed #38BDF8',
+                    borderRadius: '50%',
+                    boxShadow: '0 0 20px rgba(56, 189, 248, 0.5)'
+                  }}
+                />
+                <div style={{ position: 'relative', zIndex: 2 }}>
+                  <Zap size={36} color="#38BDF8" style={{ filter: 'drop-shadow(0 0 8px #38BDF8)' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, letterSpacing: '0.05em', color: '#F8FAFC', margin: 0 }}>
+                  PORTAL INITIATED
+                </h2>
+                <p style={{ fontSize: 13, color: '#38BDF8', fontWeight: 600, margin: 0 }}>
+                  Traveling to {navTargetName}...
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
     </div>
   );

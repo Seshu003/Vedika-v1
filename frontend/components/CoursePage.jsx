@@ -116,6 +116,19 @@ export default function CoursePage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.__vyomanta_context = {
+        page: 'courses',
+        title: 'Courses Portal',
+        coursesCount: courses.length,
+        selectedCourseTitle: selectedCourse ? selectedCourse.title : null,
+        selectedCourseCategory: selectedCourse ? selectedCourse.category : null,
+        isEnrolled
+      };
+    }
+  }, [courses.length, selectedCourse, isEnrolled]);
+
   async function handleSelectCourse(course) {
     setSelectedCourse(course);
     if (typeof window !== 'undefined' && course) {

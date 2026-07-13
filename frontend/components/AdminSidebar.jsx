@@ -181,6 +181,7 @@ export default function AdminSidebar({ isCollapsed = false, onToggleCollapse }) 
           return (
             <button
               key={id}
+              id={`sidebar-link-${id.replace('/admin/', 'admin-').replace(/\//g, '') || 'dashboard'}`}
               onClick={() => navigateTo(id, disabled)}
               style={{
                 width: isCollapsed ? 42 : '100%',
