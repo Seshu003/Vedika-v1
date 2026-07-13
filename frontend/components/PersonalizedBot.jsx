@@ -232,17 +232,21 @@ export default function PersonalizedBot() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'action' && msg.name === 'navigateToPage') {
             const page = msg.args?.page;
-            const routeNames = {
-              dashboard: '/',
-              courses: '/courses',
-              'general-tutor': '/general-tutor',
-              'coding-tutor': '/coding-tutor',
-              progress: '/progress',
-              'code-puzzle': '/code-puzzle',
-              quizzes: '/quizzes',
-              resources: '/resources'
-            };
-            const targetRoute = routeNames[page];
+             const routeNames = {
+               dashboard: '/',
+               courses: '/courses',
+               quizzes: '/courses?tab=quizzes',
+               assignments: '/courses?tab=assignments',
+               resources: '/courses?tab=resources',
+               'general-tutor': '/vedika-ai/general-tutor',
+               'coding-tutor': '/vedika-ai/coding-tutor',
+               'code-puzzle': '/vedika-ai/code-puzzle',
+               progress: '/progress',
+               'physics-lab': '/vedika-labs/physics',
+               'chemistry-lab': '/vedika-labs/chemistry',
+               'biology-lab': '/vedika-labs/biology',
+             };
+             const targetRoute = routeNames[page];
             if (targetRoute) {
               setNavTargetName(page);
               triggerSpeech(`Navigating to ${page}...`);

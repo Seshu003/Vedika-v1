@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import './resources.css';
 import ResourcesHub from '@/components/ResourcesHub';
 import ResourcesLibrary from '@/components/ResourcesLibrary';
 import ResourcesCheatSheets from '@/components/ResourcesCheatSheets';

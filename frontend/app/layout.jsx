@@ -1,5 +1,6 @@
 import { Outfit } from 'next/font/google';
 import './globals.css';
+import './resources/resources.css';
 import LayoutWrapper from '@/components/LayoutWrapper';
 
 const outfit = Outfit({

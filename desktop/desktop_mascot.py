@@ -43,9 +43,9 @@ import time
 import math
 import webbrowser
 import json
-from PyQt5.QtCore import Qt, QTimer, QPoint, QUrl, QThread, pyqtSignal, QRect, QRectF, QObject
+from PyQt5.QtCore import Qt, QTimer, QPoint, QUrl, QThread, pyqtSignal, QRect, QRectF, QObject, QSize
 from PyQt5.QtWidgets import QApplication, QWidget, QMenu, QAction, QMessageBox, QPushButton
-from PyQt5.QtGui import QPainter, QCursor, QColor, QPen, QPolygon
+from PyQt5.QtGui import QPainter, QCursor, QColor, QPen, QPolygon, QIcon, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtWebSockets import QWebSocket
 
@@ -279,19 +279,19 @@ class VoiceRecognizer(QObject):
 
 
 MENU_ITEMS = [
-    {"id": "dashboard",      "icon": "🏠", "label": "Dashboard"     },
-    {"id": "courses",        "icon": "📖", "label": "Courses"       },
-    {"id": "quizzes",        "icon": "🏆", "label": "Quizzes"       },
-    {"id": "assignments",    "icon": "📝", "label": "Assignments"   },
-    {"id": "resources",      "icon": "📁", "label": "Resources"     },
-    {"id": "general-tutor",  "icon": "🧠", "label": "Ask AI Tutor"  },
-    {"id": "coding-tutor",   "icon": "💻", "label": "Code AI Tutor" },
-    {"id": "code-puzzle",    "icon": "🧩", "label": "Code Puzzle"   },
-    {"id": "jobs",           "icon": "💼", "label": "Jobs"          },
-    {"id": "progress",       "icon": "📊", "label": "Progress"      },
-    {"id": "physics-lab",    "icon": "⚛️", "label": "Physics Lab"   },
-    {"id": "chemistry-lab",  "icon": "🧪", "label": "Chemistry Lab" },
-    {"id": "biology-lab",    "icon": "🧬", "label": "Biology Lab"   },
+    {"id": "dashboard",      "icon_path": '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />', "label": "Dashboard"     },
+    {"id": "courses",        "icon_path": '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />', "label": "Courses"       },
+    {"id": "quizzes",        "icon_path": '<circle cx="12" cy="8" r="7" /><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />', "label": "Quizzes"       },
+    {"id": "assignments",    "icon_path": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />', "label": "Assignments"   },
+    {"id": "resources",      "icon_path": '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" />', "label": "Resources"     },
+    {"id": "general-tutor",  "icon_path": '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2Z" /><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2Z" />', "label": "Ask AI Tutor"  },
+    {"id": "coding-tutor",   "icon_path": '<path d="m18 16 4-4-4-4" /><path d="m6 8-4 4 4 4" /><path d="m14.5 4-5 16" />', "label": "Code AI Tutor" },
+    {"id": "code-puzzle",    "icon_path": '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />', "label": "Code Puzzle"   },
+    {"id": "jobs",           "icon_path": '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" />', "label": "Jobs"          },
+    {"id": "progress",       "icon_path": '<path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" />', "label": "Progress"      },
+    {"id": "physics-lab",    "icon_path": '<circle cx="12" cy="12" r="1" /><path d="M20.2 20.2c2.04-2.03.02-9.17-4.5-13.7-4.5-4.5-11.67-6.53-13.7-4.5-2.04 2.03-.02 9.17 4.5 13.7 4.5 4.5 11.67 6.53 13.7 4.5Z" /><path d="M3.8 20.2c-2.04-2.03.02-9.17 4.5-13.7 4.5-4.5 11.67-6.53 13.7-4.5 2.04 2.03-.02 9.17-4.5 13.7-4.5 4.5-11.67 6.53-13.7 4.5Z" />', "label": "Physics Lab"   },
+    {"id": "chemistry-lab",  "icon_path": '<path d="M10 2v4" /><path d="M14 2v4" /><path d="M8.5 2h7" /><path d="M16 11.5h-8" /><path d="M7 16h10" /><path d="M14 6h-4l-4 9v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4Z" />', "label": "Chemistry Lab" },
+    {"id": "biology-lab",    "icon_path": '<path d="m8 8 8 8" /><path d="m16 8-8 8" /><path d="M20 4c-1.33 1.33-2 3.5-2 5.5s.67 4.17 2 5.5" /><path d="M4 20c1.33-1.33 2-3.5 2-5.5S5.33 10.33 4 9" /><path d="M15 2c-1.33 1.33-2 3.5-2 5.5s.67 4.17 2 5.5" /><path d="M9 22c1.33-1.33 2-3.5 2-5.5s-.67-4.17-2-5.5" /><path d="M14 6h4" /><path d="M6 18h4" /><path d="M14 12h4" /><path d="M6 12h4" />', "label": "Biology Lab"   },
 ]
 
 
@@ -370,7 +370,10 @@ class DesktopMascot(QWidget):
         self.menu_open = False
         self.menu_buttons = []
         for item in MENU_ITEMS:
-            btn = QPushButton(item["icon"], self)
+            btn = QPushButton(self)
+            icon = self.get_svg_icon(item["icon_path"])
+            btn.setIcon(icon)
+            btn.setIconSize(QSize(20, 20))
             btn.setFixedSize(40, 40)
             btn.setStyleSheet("""
                 QPushButton {
@@ -378,7 +381,6 @@ class DesktopMascot(QWidget):
                     border: 1px solid rgba(56, 189, 248, 150);
                     border-radius: 20px;
                     color: #F8FAFC;
-                    font-size: 18px;
                 }
                 QPushButton:hover {
                     border-color: #38BDF8;
@@ -389,6 +391,18 @@ class DesktopMascot(QWidget):
             btn.clicked.connect(lambda checked, page=item["id"]: self.navigate_from_menu(page))
             btn.hide()
             self.menu_buttons.append(btn)
+
+    def get_svg_icon(self, path_data, color="#38BDF8"):
+        svg_content = f"""<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            {path_data}
+        </svg>"""
+        renderer = QSvgRenderer(svg_content.encode('utf-8'))
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return QIcon(pixmap)
 
     def start_listening(self):
         if not HAS_SPEECH or self.listening_active:
