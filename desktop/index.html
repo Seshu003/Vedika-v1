@@ -341,6 +341,38 @@
                 height: 10px;
             }
         }
+
+        #sleep-bubbles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: none;
+        }
+        .sleep-z {
+            position: absolute;
+            color: #38bdf8;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            animation: floatUp 3s ease-in-out forwards;
+            text-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+        }
+        @keyframes floatUp {
+            0% {
+                transform: translateY(0) scale(0.6) rotate(0deg);
+                opacity: 0;
+            }
+            15% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-80px) translateX(25px) scale(1.3) rotate(15deg);
+                opacity: 0;
+            }
+        }
     </style>
     <!-- Loaded Three.js libraries locally -->
     <script src="libs/three.min.js"></script>
@@ -353,9 +385,12 @@
 
     <canvas id="canvas3d"></canvas>
 
+    <div id="sleep-bubbles"></div>
+
     <div id="bubble" class="speech-bubble bubble-closed">Hello there!</div>
 
     <div id="menu-container"></div>
+
 
     <div id="voice-toggle-btn" title="Toggle Voice Recognition">
         <div class="voice-icon-container">
@@ -803,6 +838,31 @@
                 leftArmGroup.rotation.x = -1.2;
                 leftArmGroup.rotation.z = -0.5;
                 leftArmGroup.rotation.y = Math.sin(t * 3) * 0.1;
+            } else if (activeAction === 'sleep') {
+                const breathing = Math.sin(t * 1.5);
+                torsoGroup.position.y = -0.25 + breathing * 0.015;
+                torsoGroup.rotation.x = 0.25;
+                headGroup.rotation.x = 0.45;
+                leftArmGroup.rotation.x = 0.15;
+                rightArmGroup.rotation.x = 0.15;
+            } else if (activeAction === 'jolt') {
+                torsoGroup.position.y = 0.1;
+                headGroup.rotation.x = -0.3;
+                leftArmGroup.rotation.z = -1.5;
+                rightArmGroup.rotation.z = 1.5;
+            } else if (activeAction === 'gaming') {
+                torsoGroup.position.y = -0.2 + Math.sin(t * 22) * 0.015;
+                torsoGroup.rotation.y = Math.sin(t * 4) * 0.15;
+                headGroup.rotation.x = 0.1;
+                headGroup.rotation.y = Math.cos(t * 8) * 0.08;
+                leftArmGroup.rotation.x = -1.2 + Math.sin(t * 24) * 0.15;
+                rightArmGroup.rotation.x = -1.2 + Math.cos(t * 24) * 0.15;
+            } else if (activeAction === 'youtube') {
+                torsoGroup.position.y = -0.2 + Math.sin(t * 1.0) * 0.015;
+                headGroup.rotation.y = Math.sin(t * 0.5) * 0.15;
+                headGroup.rotation.x = 0.05 + Math.sin(t * 0.8) * 0.05;
+                leftArmGroup.rotation.x = -0.2;
+                rightArmGroup.rotation.x = -0.2;
             } else if (activeAction === 'typing') {
                 torsoGroup.position.y = -0.2 + Math.sin(t * 22) * 0.015;
                 headGroup.rotation.x += 0.2;
@@ -844,7 +904,6 @@
                 headGroup.rotation.y = Math.sin(t * 2) * 0.35;
                 rightArmGroup.rotation.x = -0.8;
                 rightArmGroup.rotation.y = Math.sin(t * 2) * 0.2;
-
             } else {
                 // Default Idle bob
                 torsoGroup.position.y = -0.2 + Math.sin(t * 1.5) * 0.05;
@@ -853,8 +912,16 @@
                 rightArmGroup.rotation.z = -Math.sin(t * 1.5) * 0.02;
             }
 
+            // Speech mouth wiggle mimic: when speaking, add micro bobbing to head and wiggling to arms
+            if (window.isSpeaking) {
+                headGroup.rotation.x += Math.sin(t * 15) * 0.08;
+                rightArmGroup.rotation.x = -0.4 + Math.sin(t * 8) * 0.2;
+                rightArmGroup.rotation.y = Math.cos(t * 8) * 0.15;
+            }
+
             renderer.render(scene, camera);
         }
+
 
         animate();
 
@@ -902,13 +969,32 @@
                     pybridge.stopDrag();
                 }
 
-                // If it was a quick click and not a drag, toggle the radial menu
+                // If it was a quick click and not a drag, handle click
                 const elapsed = Date.now() - clickTime;
                 if (elapsed < 250 && !isDragAction) {
-                    toggleMenu();
+                    if (window.action === 'sleep') {
+                        wakeUpMascot();
+                    } else {
+                        toggleMenu();
+                    }
                 }
             }
         });
+
+        function wakeUpMascot() {
+            setMascotState('jolt');
+            // Remove Zzz floating particles immediately
+            const sleepBubbles = document.getElementById('sleep-bubbles');
+            if (sleepBubbles) sleepBubbles.innerHTML = '';
+            
+            if (pybridge) {
+                pybridge.wakeUpMascot();
+            }
+            setTimeout(() => {
+                setMascotState('idle');
+            }, 1500);
+        }
+
 
         // --- Radial Menu logic ---
         function toggleMenu() {
@@ -1085,11 +1171,45 @@
         let bubbleTimeout = null;
 
         function setMascotState(s) {
-            if (['idle', 'dance', 'typing', 'reading', 'writing', 'searching', 'celebrating'].includes(s)) {
+            if (['idle', 'dance', 'typing', 'reading', 'writing', 'searching', 'celebrating', 'sleep', 'jolt', 'gaming', 'youtube', 'wave'].includes(s)) {
                 window.action = s;
                 if (pybridge) pybridge.log("Mascot state changed in JS to: " + s);
+
+                // Toggle sleep bubbles container
+                const sleepContainer = document.getElementById('sleep-bubbles');
+                if (s === 'sleep') {
+                    if (sleepContainer) sleepContainer.style.display = 'block';
+                } else {
+                    if (sleepContainer) {
+                        sleepContainer.style.display = 'none';
+                        sleepContainer.innerHTML = '';
+                    }
+                }
             }
         }
+
+        // Periodically spawn floating Zzzs if sleeping
+        setInterval(() => {
+            if (window.action === 'sleep') {
+                const container = document.getElementById('sleep-bubbles');
+                if (container) {
+                    const z = document.createElement('span');
+                    z.textContent = 'Z';
+                    z.className = 'sleep-z';
+                    z.style.left = (90 + Math.random() * 40) + 'px';
+                    z.style.top = '120px';
+                    z.style.fontSize = (12 + Math.random() * 12) + 'px';
+                    z.style.opacity = Math.random() * 0.5 + 0.5;
+                    container.appendChild(z);
+                    
+                    // Remove after animation completes
+                    setTimeout(() => {
+                        z.remove();
+                    }, 3000);
+                }
+            }
+        }, 800);
+
 
         function setIsThinking(bool) {
             window.isThinking = !!bool;

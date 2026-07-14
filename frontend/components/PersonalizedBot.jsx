@@ -9,6 +9,12 @@ import {
   Home, BookOpen, Award, FileText, FolderOpen, Brain, Code2, Briefcase, BarChart3, Atom, FlaskConical, Dna
 } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { 
+  getStudentEnrollments, 
+  getQuizSubmissions, 
+  getAssignmentSubmissions,
+  getCourses
+} from '@/lib/frappe';
 
 
 
@@ -36,7 +42,46 @@ export default function PersonalizedBot() {
   const [spinningHighlightIndex, setSpinningHighlightIndex] = useState(null);
   const [isMenuSpinning, setIsMenuSpinning] = useState(false);
 
+  const studentProgressRef = useRef(null);
+  const [ageSyncKey, setAgeSyncKey] = useState(0);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setAgeSyncKey(prev => prev + 1);
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  const loadStudentStats = async (email, username) => {
+    try {
+      const [enrollments, quizSubs, assSubs, allCourses, progressRes] = await Promise.all([
+        getStudentEnrollments(email).catch(() => []),
+        getQuizSubmissions().catch(() => []),
+        getAssignmentSubmissions().catch(() => []),
+        getCourses().catch(() => []),
+        fetch(`/api/progress?email=${encodeURIComponent(email)}`).then(r => r.json()).catch(() => ({ completed: {} }))
+      ]);
+
+      const published = allCourses.filter(c => c.status === 'Published');
+      const enrolled = published.filter(c => enrollments.includes(c.id));
+      const userQuizSubs = quizSubs.filter(s => s.member === username);
+      const userAssSubs = assSubs.filter(s => s.member === username);
+
+      studentProgressRef.current = {
+        enrolledCourses: enrolled.map(c => c.title || c.id),
+        completedLessons: Object.keys(progressRes.completed || {}),
+        quizAttempts: userQuizSubs.map(s => ({ quiz: s.quiz, score: `${s.percentage}%`, passed: s.percentage >= s.passing_percentage })),
+        assignmentAttempts: userAssSubs.map(s => ({ assignment: s.assignment, status: s.status }))
+      };
+      console.log('[PersonalizedBot] Student academic stats loaded:', studentProgressRef.current);
+    } catch (e) {
+      console.error('[PersonalizedBot] Stats load error:', e);
+    }
+  };
+
   const getDefaultActionForPage = (path) => {
+
     if (path === '/coding-tutor' || path === '/code-puzzle' || path.startsWith('/lesson') || path === '/assignments') {
       return 'typing';
     }
@@ -210,7 +255,8 @@ export default function PersonalizedBot() {
       localStorage.setItem('lms-user-id', storedId);
     }
 
-    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws?clientType=web&userId=${storedId}`;
+    const userAge = localStorage.getItem('lms-user-age') || '15';
+    const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/api/ws?clientType=web&userId=${storedId}&age=${userAge}`;
     let socket = null;
     let reconnectTimeout = null;
 
@@ -283,7 +329,7 @@ export default function PersonalizedBot() {
         socket.close();
       }
     };
-  }, [router, pathname]);
+  }, [router, pathname, ageSyncKey]);
 
   // Report path/tab changes on route navigation
   useEffect(() => {
@@ -300,9 +346,12 @@ export default function PersonalizedBot() {
       const storedUser = localStorage.getItem('frappe_user');
       if (storedUser) {
         try {
-          setUser(JSON.parse(storedUser));
+          const parsed = JSON.parse(storedUser);
+          setUser(parsed);
+          loadStudentStats(parsed.email || '', parsed.username || '');
         } catch (e) {}
       }
+
       
       // Bot Session ID
       let botSession = localStorage.getItem('vyomanta_bot_session');
@@ -517,12 +566,26 @@ export default function PersonalizedBot() {
     setIsLoading(true);
 
     try {
-      const activeCtx = getActiveContext();
-      let systemPrompt = "You are a helpful, encouraging, and highly intelligent Socratic AI coding assistant. You guide high school students (around 15 years old) to understand computer science principles, loops, lists, and labs. Rather than writing all the code for them directly, ask guiding questions, explain concepts, and give step-by-step hints. " +
-        "Additionally, you can perform client-side actions. If the student asks to open, navigate, start, or show a tab/page, you must append this exact action tag to the very end of your response: [ACTION: navigate, route: '/target-route'] where target-route is one of: '/' (dashboard), '/courses', '/general-tutor', '/coding-tutor', '/progress', '/code-puzzle', '/quizzes', '/resources', '/jobs'. For example, if they say 'open jobs', respond with a friendly message and append '[ACTION: navigate, route: '/jobs']'.";
+      const ageGroup = (typeof window !== 'undefined' ? localStorage.getItem('lms-user-age') : '') || '15+';
+      let systemPrompt = "You are VEDIKA, a helpful, encouraging, friendly, and highly intelligent female Socratic AI tutor and desktop companion. " +
+        "You guide school students to understand computer science principles, loops, lists, and labs. Rather than writing all the code for them directly, ask guiding questions, explain concepts, and give step-by-step hints. Always refer to yourself as VEDIKA. " +
+        `Your target student is in the age group: ${ageGroup}. Adapt your tone and vocabulary complexity accordingly: ` +
+        (ageGroup === '6-10' ? "Speak like a very enthusiastic, warm, and playful cartoon companion. Use extremely simple words, fun analogies, and short sentences." :
+         ageGroup === '11-14' ? "Speak clearly, using structured examples and relatable real-world descriptions." :
+         "Use rigorous, analytical Socratic tutoring, providing code line-by-line analyses and Python concept breakdowns.") +
+        " Additionally, you can perform client-side actions. If the student asks to open, navigate, start, or show a tab/page, you must append this exact action tag to the very end of your response: [ACTION: navigate, route: '/target-route'] where target-route is one of: '/' (dashboard), '/courses', '/general-tutor', '/coding-tutor', '/progress', '/code-puzzle', '/quizzes', '/resources', '/jobs'. For example, if they say 'open jobs', respond with a friendly message and append '[ACTION: navigate, route: '/jobs']'.";
       
       let contextPrefix = "";
+      if (studentProgressRef.current) {
+        contextPrefix += `[Student Academic Profile Context (VEDIKA Memory)]\n`;
+        contextPrefix += `- Enrolled Courses: ${studentProgressRef.current.enrolledCourses.join(', ') || 'None'}\n`;
+        contextPrefix += `- Completed Lessons Count: ${studentProgressRef.current.completedLessons.length}\n`;
+        contextPrefix += `- Quiz Scores: ${studentProgressRef.current.quizAttempts.map(q => `${q.quiz}: ${q.score} (${q.passed ? 'Passed' : 'Failed'})`).join(', ') || 'None'}\n`;
+        contextPrefix += `- Assignment Statuses: ${studentProgressRef.current.assignmentAttempts.map(a => `${a.assignment}: ${a.status}`).join(', ') || 'None'}\n\n`;
+      }
+
       if (includeContext && activeCtx) {
+
         let pageHistoryText = '';
         if (typeof window !== 'undefined') {
           try {

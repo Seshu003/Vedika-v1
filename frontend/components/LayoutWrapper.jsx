@@ -14,6 +14,8 @@ export default function LayoutWrapper({ children }) {
   const [loading, setLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  const [showAgeModal, setShowAgeModal] = useState(false);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('sidebar_collapsed') === 'true';
@@ -83,6 +85,16 @@ export default function LayoutWrapper({ children }) {
     // If no redirect is needed, set the local state and stop loading
     setUser(currentUser);
     setLoading(false);
+
+    // Show age onboarding modal if logged in but age is not verified
+    if (currentUser && !isAuthPage) {
+      const storedAge = localStorage.getItem('lms-user-age');
+      if (!storedAge) {
+        setShowAgeModal(true);
+      }
+    } else {
+      setShowAgeModal(false);
+    }
   }, [pathname, router]);
 
   useEffect(() => {
@@ -154,6 +166,95 @@ export default function LayoutWrapper({ children }) {
         {children}
       </div>
       <PersonalizedBot />
+
+      {/* Age Onboarding modal */}
+      {showAgeModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          background: 'rgba(7, 8, 15, 0.85)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          fontFamily: 'var(--font-outfit), sans-serif'
+        }}>
+          <div style={{
+            width: 420,
+            background: 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(56, 189, 248, 0.25)',
+            borderRadius: 16,
+            padding: 24,
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px rgba(56, 189, 248, 0.15)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            color: '#f8fafc'
+          }}>
+            <div style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #38BDF8, #6366F1)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 16
+            }}>
+              <span style={{ fontSize: 24 }}>🤖</span>
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Meet VEDIKA!</h3>
+            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 20 }}>
+              Hi! I am VEDIKA, your AI companion. Select your age group so I can personalize my tutoring explanations and interactions for you:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+              {[
+                { key: '6-10', label: '🎒 Elementary School (Ages 6-10)' },
+                { key: '11-14', label: '📖 Middle School (Ages 11-14)' },
+                { key: '15+', label: '💻 High School & Above (Ages 15+)' }
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => {
+                    localStorage.setItem('lms-user-age', opt.key);
+                    setShowAgeModal(false);
+                    // Dispatch storage event to force component websocket connection updates
+                    window.dispatchEvent(new Event('storage'));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: 10,
+                    color: '#f8fafc',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(56, 189, 248, 0.15)';
+                    e.currentTarget.style.borderColor = '#38BDF8';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

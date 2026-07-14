@@ -89,11 +89,13 @@ if sys.platform == 'win32':
         import win32gui
         import win32process
         import win32con
+        import win32api
         HAS_WIN32 = True
     except ImportError:
         HAS_WIN32 = False
 else:
     HAS_WIN32 = False
+
 
 
 class MascotHTTPServer(threading.Thread):
@@ -132,6 +134,7 @@ class WebBridge(QObject):
     menu_navigated = pyqtSignal(str)
     menu_toggled = pyqtSignal(bool)
     voice_toggled = pyqtSignal()
+    wakeup_triggered = pyqtSignal()
     log_relayed = pyqtSignal(str)
 
     @pyqtSlot(int, int)
@@ -158,9 +161,14 @@ class WebBridge(QObject):
     def toggleVoiceListening(self):
         self.voice_toggled.emit()
 
+    @pyqtSlot()
+    def wakeUpMascot(self):
+        self.wakeup_triggered.emit()
+
     @pyqtSlot(str)
     def log(self, msg):
         self.log_relayed.emit(msg)
+
 
 
 class VoiceRecognizer(QObject):
@@ -188,6 +196,9 @@ class DesktopMascot(QWidget):
         self.listening_active = False
         self.stop_listening_fn = None
         self.page_loaded = False
+        self.was_away = False
+        self.coding_seconds = 0
+        self.reading_seconds = 0
 
         # Windows API tracking attributes
         self.active_app_seconds = 0
@@ -236,7 +247,9 @@ class DesktopMascot(QWidget):
         self.bridge.menu_navigated.connect(self.navigate_from_menu)
         self.bridge.menu_toggled.connect(self.js_menu_toggled)
         self.bridge.voice_toggled.connect(self.js_voice_toggled)
+        self.bridge.wakeup_triggered.connect(self.wakeup_mascot)
         self.bridge.log_relayed.connect(lambda msg: print(f"[JS] {msg}"))
+
 
         # Monitor page loading status
         self.web_view.loadFinished.connect(self.on_load_finished)
@@ -381,6 +394,7 @@ class DesktopMascot(QWidget):
         # Stop listening completely to prevent echo feedback loops
         self.stop_listening()
         self.is_speaking = True
+        self.run_js("window.isSpeaking = true;")
         speak_duration = max(1500, len(text) * 90) # ~90ms per character
         QTimer.singleShot(speak_duration, self.finish_speaking)
 
@@ -396,8 +410,10 @@ class DesktopMascot(QWidget):
 
     def finish_speaking(self):
         self.is_speaking = False
+        self.run_js("window.isSpeaking = false;")
         print("[Cosmos] Finished speaking, microphone listening resumed.")
         self.start_listening()
+
 
     def trigger_random_gesture(self):
         # Trigger random animation if currently idle on the desktop
@@ -601,51 +617,123 @@ class DesktopMascot(QWidget):
         self.listening_active = False
         self.run_js("setVoiceHudActive(false);")
 
+    def wakeup_mascot(self):
+        print("[Mascot] Waking up from sleep!")
+        self.set_state("jolt")
+        QTimer.singleShot(1500, lambda: self.set_state("idle"))
+        self.speak("Yawn... Oh! You startled me! Good to see you back. Ready to learn?")
+
     def monitor_system_activity(self):
         if HAS_WIN32:
             try:
+                # Check system idle time using win32api
+                idle_sec = 0
+                try:
+                    last_input = win32api.GetLastInputInfo()
+                    current_ticks = win32api.GetTickCount()
+                    idle_ms = current_ticks - last_input
+                    idle_sec = idle_ms / 1000.0
+                except Exception:
+                    pass
+                
+                # Check return scenario: if user was idle > 300s (5 minutes) and is now active
+                if idle_sec > 300:
+                    self.was_away = True
+                elif self.was_away and idle_sec == 0:
+                    self.was_away = False
+                    self.set_state("wave")
+                    self.speak("Hey! Where have you been? I missed you! What were you up to?")
+                    return
+
+                # If idle for > 60 seconds, go to sleep!
+                if idle_sec > 60:
+                    if self.state != "sleep":
+                        self.set_state("sleep")
+                        self.speak("Zzz...")
+                    return
+                elif self.state == "sleep" and idle_sec == 0:
+                    # User started moving mouse/keyboard but didn't click the mascot, wake up gently
+                    self.set_state("idle")
+                    self.speak("Ah, welcome back!")
+                    return
+
+                # Normal app tracking
                 hwnd = win32gui.GetForegroundWindow()
                 title = win32gui.GetWindowText(hwnd)
                 
                 title_lower = title.lower()
                 matched = False
                 
-                # Coding tracking
-                if any(x in title_lower for x in ["visual studio", "vscode", "code.exe", ".py", ".js", ".html", ".css", ".cpp", ".java"]):
+                # 1. Coding mimic
+                if any(x in title_lower for x in ["visual studio", "vscode", "code.exe", "pycharm", "eclipse", "sublime", "notepad++", "notepad", ".py", ".js", ".html", ".css", ".cpp", ".java", ".go", ".rs", ".c"]):
                     self.set_state("typing")
+                    self.coding_seconds += 1
+                    self.reading_seconds = 0
                     matched = True
+                    
+                    # Rest reminder after 30 minutes
+                    if self.coding_seconds >= 1800:
+                        self.coding_seconds = 0
+                        self.speak("You have been coding for 30 minutes! Please take a 5-minute break. 🌸")
                 
-                # Study tracking
-                elif any(x in title_lower for x in ["pdf", "acrobat", "reader", "document", "word", "textbook"]):
+                # 2. Reading mimic
+                elif any(x in title_lower for x in ["pdf", "acrobat", "reader", "document", "word", "textbook", "epub", "kindle"]):
                     self.set_state("reading")
+                    self.reading_seconds += 1
+                    self.coding_seconds = 0
+                    matched = True
+                    
+                    # Rest reminder after 30 minutes
+                    if self.reading_seconds >= 1800:
+                        self.reading_seconds = 0
+                        self.speak("You have been reading for 30 minutes! Please take a 5-minute break. 🌸")
+                
+                # 3. YouTube mimic
+                elif "youtube" in title_lower:
+                    self.set_state("youtube")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
                     matched = True
                 
-                # Spreadsheet tracking
-                elif any(x in title_lower for x in ["excel", "spreadsheet", "csv", "xlsx"]):
+                # 4. Gaming mimic
+                elif any(x in title_lower for x in ["steam", "epic games", "minecraft", "valorant", "gta", "roblox", "league", "game", "fifa", "fortnite"]):
+                    self.set_state("gaming")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
+                    matched = True
+                
+                # 5. Desktop file mimic
+                elif any(x in title_lower for x in ["explorer", "create file", "delete file", "folder", "copying", "moving"]):
                     self.set_state("writing")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
                     matched = True
                 
-                # Browser tracking
-                elif any(x in title_lower for x in ["chrome", "edge", "firefox", "browser"]):
+                # 6. Gallery / image mimic
+                elif any(x in title_lower for x in ["gallery", "photos", "paint", "photoshop", "image", "canvas", "draw", "picture"]):
+                    self.set_state("searching")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
+                    matched = True
+                
+                # 7. Web browsing mimic
+                elif any(x in title_lower for x in ["chrome", "edge", "firefox", "browser", "opera", "safari"]):
+                    self.set_state("searching")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
+                    matched = True
+                
+                if not matched:
+                    # Reset active timers if not coding/reading
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
                     if not self.socket.isValid():
                         self.set_state("idle")
-                    matched = True
-
-                if matched:
-                    self.active_app_seconds += 1
-                    if self.active_app_seconds == 2700: # 45 minutes
-                        QMessageBox.information(
-                            self, 
-                            "Rest reminder!", 
-                            "Take a few minutes of rest! You have been working for so long."
-                        )
-                else:
-                    self.set_state("idle")
-                    self.active_app_seconds = 0
-            except Exception:
-                pass
-
+            except Exception as e:
+                print(f"[SystemMonitor] Error: {e}")
+        
         self.connect_websocket()
+
 
     def show_context_menu(self, pos):
         global_pos = self.web_view.mapToGlobal(pos)
