@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
-import ThreeAstronautBot from './ThreeAstronautBot';
+import dynamic from 'next/dynamic';
+
 
 const getContextSpeech = (path) => {
   if (path.includes('playground')) return "Welcome to the Code Playground! 💻 Let's test some ideas.";

@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Vyomanta Mascot 3D</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        #canvas3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: auto;
+        }
+
+        /* Glassmorphic Speech Bubble */
+        .speech-bubble {
+            position: absolute;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1.5px solid rgba(56, 189, 248, 0.5);
+            border-radius: 14px;
+            color: #f1f5f9;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 500;
+            line-height: 1.4;
+            text-align: center;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            opacity: 0;
+            transform: scale(0.8) translateY(10px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: none;
+            max-width: 220px;
+            min-width: 150px;
+        }
+
+        .speech-bubble.visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+
+        /* Bubble arrow pointing down to mascot */
+        .speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 8px 8px 0;
+            border-style: solid;
+            border-color: rgba(15, 23, 42, 0.85) transparent;
+            display: block;
+            width: 0;
+        }
+
+        /* Layout changes based on menu state */
+        .bubble-closed {
+            top: 15px;
+            left: 50%;
+            transform: scale(0.8) translate(-50%, 10px);
+            transform-origin: bottom center;
+        }
+
+        .bubble-closed.visible {
+            transform: scale(1) translate(-50%, 0);
+        }
+
+        .bubble-open {
+            top: 25px;
+            left: 50%;
+            transform: scale(0.8) translate(-50%, 10px);
+            transform-origin: bottom center;
+        }
+
+        .bubble-open.visible {
+            transform: scale(1) translate(-50%, 0);
+        }
+
+        /* Circular Menu Container with Swirling transition */
+        #menu-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 5;
+            pointer-events: none;
+            transform: rotate(-15deg);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #menu-container.open {
+            transform: rotate(0deg);
+        }
+
+        /* Common Menu Button Styles */
+        .menu-btn {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.95);
+            color: #38bdf8;
+            border: 1.5px solid rgba(56, 189, 248, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+            pointer-events: auto;
+            opacity: 0;
+            transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, 0px))) scale(var(--scale, 0.5));
+            z-index: 6;
+        }
+
+        .menu-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            transition: transform 0.2s ease;
+        }
+
+        .menu-btn.visible {
+            opacity: 1;
+            --scale: 1;
+        }
+
+        .menu-btn.visible:hover {
+            border-color: #38bdf8;
+            background: rgba(56, 189, 248, 0.18);
+            color: #ffffff;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+            --scale: 1.12;
+        }
+
+        .menu-btn.visible:hover svg {
+            transform: scale(1.1);
+        }
+
+        .menu-btn.active-parent {
+            border-color: #a855f7;
+            color: #a855f7;
+            background: rgba(168, 85, 247, 0.1);
+        }
+
+        /* Sub Menu Buttons (Smaller, purple theme) */
+        .sub-menu-btn {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.98);
+            color: #a855f7;
+            border: 1.5px solid rgba(168, 85, 247, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.4s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+            pointer-events: auto;
+            opacity: 0;
+            transform: translate(calc(-50% + var(--tx, 0px)), calc(-50% + var(--ty, 0px))) scale(var(--scale, 0.5));
+            z-index: 7;
+        }
+
+        .sub-menu-btn svg {
+            width: 17px;
+            height: 17px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .sub-menu-btn.visible {
+            opacity: 1;
+            --scale: 1;
+        }
+
+        .sub-menu-btn.visible:hover {
+            border-color: #a855f7;
+            background: rgba(168, 85, 247, 0.18);
+            color: #ffffff;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.6);
+            --scale: 1.12;
+        }
+
+        /* Voice Toggle Pill (Floating Glassmorphic Control) */
+        #voice-toggle-btn {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%) scale(1);
+            z-index: 100;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 6px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: auto;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        }
+
+        #voice-toggle-btn:hover {
+            background: rgba(15, 23, 42, 0.95);
+            transform: translateX(-50%) scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+        }
+
+        .voice-icon-container {
+            position: relative;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mic-icon {
+            width: 16px;
+            height: 16px;
+            stroke: #94a3b8;
+            transition: stroke 0.3s ease;
+        }
+
+        .mic-slash {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: #ef4444;
+            transform: rotate(-45deg);
+            transition: all 0.3s ease;
+            transform-origin: center;
+        }
+
+        .voice-status-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: color 0.3s ease;
+        }
+
+        .sound-wave {
+            display: flex;
+            align-items: center;
+            gap: 2.5px;
+            height: 10px;
+            width: 13px;
+        }
+
+        .sound-wave .bar {
+            display: inline-block;
+            width: 2px;
+            height: 3px;
+            background-color: #38bdf8;
+            border-radius: 1px;
+            transition: all 0.3s ease;
+            opacity: 0.3;
+        }
+
+        /* Active State styling */
+        #voice-toggle-btn.active {
+            border-color: rgba(56, 189, 248, 0.5);
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        }
+
+        #voice-toggle-btn.active .mic-icon {
+            stroke: #38bdf8;
+        }
+
+        #voice-toggle-btn.active .mic-slash {
+            transform: rotate(-45deg) scale(0);
+            opacity: 0;
+        }
+
+        #voice-toggle-btn.active .voice-status-text {
+            color: #38bdf8;
+        }
+
+        #voice-toggle-btn.active .sound-wave .bar {
+            opacity: 1;
+            animation: sound-bounce 1.2s ease-in-out infinite;
+        }
+
+        #voice-toggle-btn.active .sound-wave .bar:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        #voice-toggle-btn.active .sound-wave .bar:nth-child(2) {
+            animation-delay: 0.3s;
+        }
+
+        #voice-toggle-btn.active .sound-wave .bar:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+
+        @keyframes sound-bounce {
+            0%, 100% {
+                height: 3px;
+            }
+            50% {
+                height: 10px;
+            }
+        }
+    </style>
+    <!-- Loaded Three.js libraries locally -->
+    <script src="libs/three.min.js"></script>
+    <script src="libs/GLTFLoader.js"></script>
+    <!-- PyQt WebChannel API -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+
+<body>
+
+    <canvas id="canvas3d"></canvas>
+
+    <div id="bubble" class="speech-bubble bubble-closed">Hello there!</div>
+
+    <div id="menu-container"></div>
+
+    <div id="voice-toggle-btn" title="Toggle Voice Recognition">
+        <div class="voice-icon-container">
+            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+            <div class="mic-slash"></div>
+        </div>
+        <span class="voice-status-text">Voice Off</span>
+        <div class="sound-wave">
+            <span class="bar"></span>
+            <span class="bar"></span>
+            <span class="bar"></span>
+        </div>
+    </div>
+
+    <script>
+        // --- Circular Menu Structure ---
+        const MENU_STRUCTURE = [
+            {
+                id: "dashboard",
+                label: "Dashboard",
+                icon: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />',
+                sub: []
+            },
+            {
+                id: "courses",
+                label: "Courses",
+                icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />',
+                sub: [
+                    { id: "courses", label: "Explore Courses", icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />' },
+                    { id: "quizzes", label: "Quizzes", icon: '<circle cx="12" cy="8" r="7" /><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />' },
+                    { id: "assignments", label: "Assignments", icon: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />' },
+                    { id: "resources", label: "Resources Hub", icon: '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" />' }
+                ]
+            },
+            {
+                id: "vedika_ai",
+                label: "Vedika AI",
+                icon: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" />',
+                sub: [
+                    { id: "general-tutor", label: "Ask VEDIKA", icon: '<path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />' },
+                    { id: "coding-tutor", label: "Code with VEDIKA", icon: '<path d="m18 16 4-4-4-4" /><path d="m6 8-4 4 4 4" /><path d="m14.5 4-5 16" />' },
+                    { id: "code-puzzle", label: "Code Puzzle", icon: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />' }
+                ]
+            },
+            {
+                id: "jobs",
+                label: "Jobs",
+                icon: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /><rect width="20" height="14" x="2" y="6" rx="2" />',
+                sub: []
+            },
+            {
+                id: "progress",
+                label: "Progress",
+                icon: '<path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" />',
+                sub: []
+            },
+            {
+                id: "vedika_labs",
+                label: "Vedika Labs",
+                icon: '<path d="M4.5 3h15" /><path d="M6 3v16a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3" /><path d="M6 14h12" />',
+                sub: [
+                    { id: "physics-lab", label: "Physics Lab", icon: '<circle cx="12" cy="12" r="2" /><path d="M12 2a10 10 0 0 1 7.391 16.88" /><path d="M12 22A10 10 0 0 1 4.61 5.115" /><path d="M12 6a6 6 0 0 1 4.243 10.243" /><path d="M12 18a6 6 0 0 1-4.243-10.243" />' },
+                    { id: "chemistry-lab", label: "Chemistry Lab", icon: '<path d="M10 2v4" /><path d="M14 2v4" /><path d="M8.5 2h7" /><path d="M16 11.5h-8" /><path d="M7 16h10" /><path d="M14 6h-4l-4 9v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4Z" />' },
+                    { id: "biology-lab", label: "Biology Lab", icon: '<path d="M2 15c6.667-6 13.333 0 20-6" /><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993" /><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993" /><path d="m17 6-2.5-2.5" /><path d="m14 8.5-1-1" /><path d="m7 18 2.5 2.5" /><path d="m3.5 14.5.5.5" /><path d="m10 13 .5.5" />' }
+                ]
+            }
+        ];
+
+        // --- Global Variables attached to Window ---
+        window.pointer = { x: 0, y: 0 };
+        window.action = 'idle';
+        window.isThinking = false;
+        window.isError = false;
+        window.isDragging = false;
+        window.menuOpen = false;
+
+        // --- Global Bridge & Python Communication ---
+        let pybridge = null;
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                pybridge = channel.objects.pybridge;
+                console.log("QWebChannel connected successfully!");
+                pybridge.log("JS WebChannel connected!");
+            });
+        }
+
+        // --- Three.js Setup ---
+        const canvas = document.getElementById('canvas3d');
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const scene = new THREE.Scene();
+        scene.background = null;
+
+        const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 2.9); // Starts at 2.9 when closed
+
+        // Handle dynamically updating canvas dimensions on window resize
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            // Maintain constant bot screen height relative to canvas height
+            camera.position.z = 2.9 * (h / 220);
+        });
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+        dirLight.position.set(3, 4, 3);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const cyanLight = new THREE.PointLight(0x00f0ff, 0.6);
+        cyanLight.position.set(-3, 2, 2);
+        scene.add(cyanLight);
+
+        const yellowLight = new THREE.PointLight(0xeab308, 0.4);
+        yellowLight.position.set(0, -2, 1);
+        scene.add(yellowLight);
+
+        // Robot refs
+        let robotMesh, originalGeometry, robotMaterial;
+        let torsoGroup, headGroup;
+        let leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup;
+        const props = {};
+
+        let modelLoaded = false;
+        const clock = new THREE.Clock();
+
+        // Load robot.glb
+        const loader = new THREE.GLTFLoader();
+        loader.load('models/robot.glb', function (gltf) {
+            const rootModel = gltf.scene;
+
+            // Find the single mesh in the GLB
+            rootModel.traverse((child) => {
+                if (child.isMesh && !robotMesh) {
+                    robotMesh = child;
+                }
+            });
+
+            if (!robotMesh) {
+                console.error("No mesh found in robot.glb!");
+                return;
+            }
+
+            originalGeometry = robotMesh.geometry;
+            robotMaterial = robotMesh.material;
+
+            const indices = originalGeometry.index.array;
+            const positionAttr = originalGeometry.attributes.position;
+
+            // Segment geometries
+            const parts = {
+                head: [], leftArm: [], rightArm: [], leftLeg: [], rightLeg: [], torso: []
+            };
+
+            for (let i = 0; i < indices.length; i += 3) {
+                const iA = indices[i];
+                const iB = indices[i + 1];
+                const iC = indices[i + 2];
+
+                const ax = positionAttr.getX(iA), ay = positionAttr.getY(iA), az = positionAttr.getZ(iA);
+                const bx = positionAttr.getX(iB), by = positionAttr.getY(iB), bz = positionAttr.getZ(iB);
+                const cx = positionAttr.getX(iC), cy = positionAttr.getY(iC), cz = positionAttr.getZ(iC);
+
+                const xc = (ax + bx + cx) / 3.0;
+                const yc = (ay + by + cy) / 3.0;
+                const zc = (az + bz + cz) / 3.0;
+
+                // Head is unified above yc = 0.25 (without x limits) to prevent vertical ears/side slicing.
+                // Between yc = 0.15 and 0.25, center vertices are head (chin/neck), and side vertices are arms (shoulders).
+                if (yc > 0.25) {
+                    parts.head.push(iA, iB, iC);
+                } else if (yc > 0.15) {
+                    if (xc < -0.22) parts.leftArm.push(iA, iB, iC);
+                    else if (xc > 0.22) parts.rightArm.push(iA, iB, iC);
+                    else parts.head.push(iA, iB, iC); // lower chin/neck
+                } else if (yc < -0.35) {
+                    if (xc < 0) parts.leftLeg.push(iA, iB, iC);
+                    else parts.rightLeg.push(iA, iB, iC);
+                } else {
+                    if (xc < -0.22) parts.leftArm.push(iA, iB, iC);
+                    else if (xc > 0.22) parts.rightArm.push(iA, iB, iC);
+                    else parts.torso.push(iA, iB, iC);
+                }
+            }
+
+            const partGeometries = {};
+            const createPartGeometry = (idxArray) => {
+                if (idxArray.length === 0) return null;
+                const geom = originalGeometry.clone();
+                geom.setIndex(new THREE.BufferAttribute(new Uint32Array(idxArray), 1));
+                return geom;
+            };
+
+            for (let p in parts) {
+                partGeometries[p] = createPartGeometry(parts[p]);
+            }
+
+            // Assemble character
+            torsoGroup = new THREE.Group();
+            scene.add(torsoGroup);
+
+            if (partGeometries.torso) {
+                const m = new THREE.Mesh(partGeometries.torso, robotMaterial);
+                torsoGroup.add(m);
+            }
+
+            // Head Group
+            headGroup = new THREE.Group();
+            headGroup.position.set(0, 0.4, 0); // Head pivot
+            torsoGroup.add(headGroup);
+
+            if (partGeometries.head) {
+                const m = new THREE.Mesh(partGeometries.head, robotMaterial);
+                m.position.set(0, -0.4, 0); // Inverse offset
+                headGroup.add(m);
+            }
+
+            // Arms
+            leftArmGroup = new THREE.Group();
+            leftArmGroup.position.set(-0.28, 0.2, 0);
+            torsoGroup.add(leftArmGroup);
+            if (partGeometries.leftArm) {
+                const m = new THREE.Mesh(partGeometries.leftArm, robotMaterial);
+                m.position.set(0.28, -0.2, 0);
+                leftArmGroup.add(m);
+            }
+
+            rightArmGroup = new THREE.Group();
+            rightArmGroup.position.set(0.28, 0.2, 0);
+            torsoGroup.add(rightArmGroup);
+            if (partGeometries.rightArm) {
+                const m = new THREE.Mesh(partGeometries.rightArm, robotMaterial);
+                m.position.set(-0.28, -0.2, 0);
+                rightArmGroup.add(m);
+            }
+
+            // Legs
+            leftLegGroup = new THREE.Group();
+            leftLegGroup.position.set(-0.16, -0.35, 0);
+            torsoGroup.add(leftLegGroup);
+            if (partGeometries.leftLeg) {
+                const m = new THREE.Mesh(partGeometries.leftLeg, robotMaterial);
+                m.position.set(0.16, 0.35, 0);
+                leftLegGroup.add(m);
+            }
+
+            rightLegGroup = new THREE.Group();
+            rightLegGroup.position.set(0.16, -0.35, 0);
+            torsoGroup.add(rightLegGroup);
+            if (partGeometries.rightLeg) {
+                const m = new THREE.Mesh(partGeometries.rightLeg, robotMaterial);
+                m.position.set(-0.16, 0.35, 0);
+                rightLegGroup.add(m);
+            }
+
+            // --- Construct 3D Props ---
+            // 1. Laptop
+            const laptopGroup = new THREE.Group();
+            laptopGroup.position.set(0, -0.05, 0.55);
+            laptopGroup.rotation.x = 0.05;
+            torsoGroup.add(laptopGroup);
+
+            const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.02, 0.28), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.2 }));
+            laptopBase.position.set(0, -0.1, 0);
+            laptopGroup.add(laptopBase);
+
+            const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.018), new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.8, roughness: 0.2 }));
+            laptopScreen.position.set(0, 0.01, -0.135);
+            laptopScreen.rotation.x = 0.48;
+            laptopGroup.add(laptopScreen);
+
+            const laptopGlow = new THREE.Mesh(new THREE.PlaneGeometry(0.39, 0.21), new THREE.MeshBasicMaterial({ color: 0x38BDF8 }));
+            laptopGlow.position.set(0, 0.01, -0.124);
+            laptopGlow.rotation.x = 0.48;
+            laptopGroup.add(laptopGlow);
+            props.laptop = laptopGroup;
+            laptopGroup.visible = false;
+
+            // 2. Book
+            const bookGroup = new THREE.Group();
+            bookGroup.position.set(0, 0.02, 0.52);
+            bookGroup.rotation.x = 0.25;
+            torsoGroup.add(bookGroup);
+
+            const pageMat = new THREE.MeshStandardMaterial({ color: 0xF8FAFC, roughness: 0.7 });
+            const leftPage = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.012), pageMat);
+            leftPage.position.set(-0.14, 0, 0);
+            leftPage.rotation.y = 0.28;
+            bookGroup.add(leftPage);
+
+            const rightPage = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.012), pageMat);
+            rightPage.position.set(0.14, 0, 0);
+            rightPage.rotation.y = -0.28;
+            bookGroup.add(rightPage);
+
+            const bookSpine = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.31, 0.018), new THREE.MeshStandardMaterial({ color: 0x991B1B, metalness: 0.3, roughness: 0.5 }));
+            bookSpine.position.set(0, -0.01, -0.01);
+            bookGroup.add(bookSpine);
+            props.book = bookGroup;
+            bookGroup.visible = false;
+
+            // 3. Clipboard
+            const clipboardGroup = new THREE.Group();
+            clipboardGroup.position.set(0, -0.04, 0.52);
+            clipboardGroup.rotation.x = 0.28;
+            torsoGroup.add(clipboardGroup);
+
+            const board = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.015), new THREE.MeshStandardMaterial({ color: 0xD97706, metalness: 0.2, roughness: 0.8 }));
+            clipboardGroup.add(board);
+
+            const paper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.005), pageMat);
+            paper.position.set(0, 0.01, 0.01);
+            clipboardGroup.add(paper);
+
+            const clip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.02), new THREE.MeshStandardMaterial({ color: 0x94A3B8, metalness: 0.9, roughness: 0.1 }));
+            clip.position.set(0, 0.17, 0.015);
+            clipboardGroup.add(clip);
+            props.clipboard = clipboardGroup;
+            clipboardGroup.visible = false;
+
+            // 4. Trophy
+            const trophyGroup = new THREE.Group();
+            trophyGroup.position.set(0, 0.05, 0.55);
+            torsoGroup.add(trophyGroup);
+
+            const goldMat = new THREE.MeshStandardMaterial({ color: 0xEAB308, metalness: 0.9, roughness: 0.1 });
+            const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.04, 16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6, roughness: 0.3 }));
+            baseMesh.position.set(0, -0.22, 0);
+            trophyGroup.add(baseMesh);
+
+            const stemMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.15, 12), goldMat);
+            stemMesh.position.set(0, -0.13, 0);
+            trophyGroup.add(stemMesh);
+
+            const cupMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.08, 0.22, 16), goldMat);
+            cupMesh.position.set(0, 0.05, 0);
+            trophyGroup.add(cupMesh);
+
+            const leftHandle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 8, 16, Math.PI), goldMat);
+            leftHandle.position.set(-0.14, 0.05, 0);
+            leftHandle.rotation.z = Math.PI / 6;
+            trophyGroup.add(leftHandle);
+
+            const rightHandle = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 8, 16, Math.PI), goldMat);
+            rightHandle.position.set(0.14, 0.05, 0);
+            rightHandle.rotation.z = -Math.PI / 6;
+            trophyGroup.add(rightHandle);
+            props.trophy = trophyGroup;
+            trophyGroup.visible = false;
+
+            // 5. Magnifier
+            const magnifierGroup = new THREE.Group();
+            magnifierGroup.position.set(0.15, -0.25, 0.2);
+            magnifierGroup.rotation.set(0.2, 0.2, 0);
+            rightArmGroup.add(magnifierGroup);
+
+            const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.15, 8), new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.6, roughness: 0.3 }));
+            handle.position.set(0, -0.15, 0);
+            magnifierGroup.add(handle);
+
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.012, 8, 24), new THREE.MeshStandardMaterial({ color: 0xF59E0B, metalness: 0.9, roughness: 0.1 }));
+            ring.rotation.x = Math.PI / 2;
+            magnifierGroup.add(ring);
+
+            const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.005, 16), new THREE.MeshPhysicalMaterial({ transparent: true, opacity: 0.35, color: 0x38BDF8, roughness: 0.05, transmission: 0.9, thickness: 0.5 }));
+            lens.rotation.x = Math.PI / 2;
+            magnifierGroup.add(lens);
+            props.magnifier = magnifierGroup;
+            magnifierGroup.visible = false;
+
+            modelLoaded = true;
+            console.log("Model loading & segmentation completed!");
+            if (pybridge) pybridge.log("Mascot 3D Model Loaded!");
+        });
+
+        // --- Render/Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!modelLoaded) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            const t = clock.getElapsedTime();
+
+
+
+            // Reset base positions & scales
+            torsoGroup.position.set(0, -0.2, 0);
+            torsoGroup.rotation.set(0, 0, 0);
+            torsoGroup.scale.set(1, 1, 1);
+
+            headGroup.rotation.set(0, 0, 0);
+            leftArmGroup.rotation.set(0, 0, 0);
+            rightArmGroup.rotation.set(0, 0, 0);
+            leftLegGroup.rotation.set(0, 0, 0);
+            rightLegGroup.rotation.set(0, 0, 0);
+
+            // Show/Hide Props
+            props.laptop.visible = (window.action === 'typing');
+            props.book.visible = (window.action === 'reading');
+            props.clipboard.visible = (window.action === 'writing');
+            props.trophy.visible = (window.action === 'celebrating');
+            props.magnifier.visible = (window.action === 'searching');
+
+            // Float animations
+            if (window.action === 'typing') {
+                props.laptop.position.y = -0.05 + Math.sin(t * 2.5) * 0.015;
+            } else if (window.action === 'reading') {
+                props.book.position.y = 0.02 + Math.sin(t * 2.2) * 0.02;
+            } else if (window.action === 'writing') {
+                props.clipboard.position.y = -0.04 + Math.sin(t * 2.0) * 0.015;
+            } else if (window.action === 'celebrating') {
+                props.trophy.position.y = 0.05 + Math.sin(t * 3.0) * 0.02;
+            }
+
+            // Head tracking - Higher rotation multipliers and faster lerp responsiveness
+            const targetLookX = window.pointer.x * 0.75;
+            const targetLookY = window.pointer.y * 0.50;
+            headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetLookX, 0.18);
+            headGroup.rotation.x = THREE.MathUtils.lerp(headGroup.rotation.x, -targetLookY, 0.18);
+
+            // Action dispatcher - Bot stays in its original pose (idle/typing/reading etc) when clicked/dragged
+            const activeAction = window.action;
+
+            if (window.isThinking || activeAction === 'thinking') {
+                headGroup.rotation.y += Math.sin(t * 1.5) * 0.15;
+                headGroup.rotation.z = 0.15;
+                leftArmGroup.rotation.x = -1.2;
+                leftArmGroup.rotation.z = -0.5;
+                leftArmGroup.rotation.y = Math.sin(t * 3) * 0.1;
+            } else if (activeAction === 'typing') {
+                torsoGroup.position.y = -0.2 + Math.sin(t * 22) * 0.015;
+                headGroup.rotation.x += 0.2;
+                leftArmGroup.rotation.x = -1.0;
+                leftArmGroup.rotation.y = Math.sin(t * 18) * 0.15;
+                rightArmGroup.rotation.x = -1.0;
+                rightArmGroup.rotation.y = Math.cos(t * 18) * 0.15;
+            } else if (activeAction === 'wave') {
+                rightArmGroup.rotation.z = 1.1;
+                rightArmGroup.rotation.x = -0.2 + Math.sin(t * 10) * 0.35;
+            } else if (activeAction === 'dance') {
+                torsoGroup.position.y = -0.2 + Math.abs(Math.sin(t * 5)) * 0.18;
+                torsoGroup.rotation.y = Math.sin(t * 5) * 0.2;
+                headGroup.rotation.z = Math.sin(t * 5) * 0.15;
+                leftArmGroup.rotation.x = Math.sin(t * 6) * 0.6;
+                rightArmGroup.rotation.x = -Math.sin(t * 6) * 0.6;
+                leftLegGroup.rotation.z = Math.max(0, Math.sin(t * 5)) * 0.15;
+                rightLegGroup.rotation.z = -Math.max(0, -Math.sin(t * 5)) * 0.15;
+            } else if (activeAction === 'celebrating') {
+                torsoGroup.position.y = -0.2 + Math.abs(Math.sin(t * 6)) * 0.25;
+                leftArmGroup.rotation.z = -2.1;
+                rightArmGroup.rotation.z = 2.1;
+                leftArmGroup.rotation.x = Math.sin(t * 12) * 0.2;
+                rightArmGroup.rotation.x = Math.cos(t * 12) * 0.2;
+            } else if (activeAction === 'reading') {
+                headGroup.rotation.x += 0.3;
+                headGroup.rotation.y = Math.sin(t * 1.4) * 0.15;
+                leftArmGroup.rotation.x = -0.8;
+                leftArmGroup.rotation.y = 0.3;
+                rightArmGroup.rotation.x = -0.8;
+                rightArmGroup.rotation.y = -0.3;
+            } else if (activeAction === 'writing') {
+                headGroup.rotation.x += 0.3;
+                leftArmGroup.rotation.x = -0.5;
+                leftArmGroup.rotation.y = 0.2;
+                rightArmGroup.rotation.x = -0.8;
+                rightArmGroup.rotation.z = Math.sin(t * 12) * 0.08;
+            } else if (activeAction === 'searching') {
+                headGroup.rotation.y = Math.sin(t * 2) * 0.35;
+                rightArmGroup.rotation.x = -0.8;
+                rightArmGroup.rotation.y = Math.sin(t * 2) * 0.2;
+
+            } else {
+                // Default Idle bob
+                torsoGroup.position.y = -0.2 + Math.sin(t * 1.5) * 0.05;
+                headGroup.rotation.z = Math.sin(t * 0.65) * 0.02;
+                leftArmGroup.rotation.z = Math.sin(t * 1.5) * 0.02;
+                rightArmGroup.rotation.z = -Math.sin(t * 1.5) * 0.02;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // --- Interaction & Drag Handling ---
+        let dragTimer = null;
+        let isDragAction = false;
+        let clickTime = 0;
+
+        window.addEventListener('mousedown', (e) => {
+            // Exclude speech bubble, menu buttons, sub-menu buttons, and voice toggle from drag trigger
+            if (e.target.closest('#bubble') || e.target.closest('.menu-btn') || e.target.closest('.sub-menu-btn') || e.target.closest('#voice-toggle-btn')) {
+                return;
+            }
+
+            if (e.button === 0) { // Left click
+                window.isDragging = true;
+                isDragAction = false;
+                clickTime = Date.now();
+
+                if (pybridge) {
+                    pybridge.startDrag(e.screenX, e.screenY);
+                }
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (window.isDragging) {
+                isDragAction = true;
+                if (pybridge) {
+                    pybridge.drag(e.screenX, e.screenY);
+                }
+            } else {
+                // Look tracking: compute mouse offset relative to screen/viewport center
+                const cx = window.menuOpen ? 200 : 110;
+                const cy = window.menuOpen ? 200 : 110;
+                window.pointer.x = (e.clientX - cx) / cx;
+                window.pointer.y = -(e.clientY - cy) / cy; // standard WebGL Y inverted
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (window.isDragging) {
+                window.isDragging = false;
+                if (pybridge) {
+                    pybridge.stopDrag();
+                }
+
+                // If it was a quick click and not a drag, toggle the radial menu
+                const elapsed = Date.now() - clickTime;
+                if (elapsed < 250 && !isDragAction) {
+                    toggleMenu();
+                }
+            }
+        });
+
+        // --- Radial Menu logic ---
+        function toggleMenu() {
+            if (!window.menuOpen) {
+                // OPEN: expand ring
+                window.menuOpen = true;
+                
+                // 1. Tell Python to resize/reposition the window first
+                if (pybridge) {
+                    pybridge.toggleMenuState(true);
+                }
+                
+                // 2. Build the buttons after a short delay to ensure window width/height is fully updated to 400x400
+                setTimeout(() => {
+                    buildMenuButtons();
+                }, 60);
+            } else {
+                closeMenu();
+            }
+        }
+
+        function buildMenuButtons() {
+            const container = document.getElementById('menu-container');
+            
+            container.classList.add('open');
+            
+            // Adjust speech bubble positioning
+            const bubble = document.getElementById('bubble');
+            bubble.classList.remove('bubble-closed');
+            bubble.classList.add('bubble-open');
+
+            container.innerHTML = ''; // reset menu
+            
+            const N = MENU_STRUCTURE.length;
+            const RADIUS = 135; // Positioned perfectly in the 400x400 view
+
+            MENU_STRUCTURE.forEach((item, idx) => {
+                const btn = document.createElement('div');
+                btn.className = 'menu-btn';
+                btn.innerHTML = `<svg viewBox="0 0 24 24">${item.icon}</svg>`;
+                btn.title = item.label;
+                
+                // Start centered (0px offset)
+                btn.style.setProperty('--tx', '0px');
+                btn.style.setProperty('--ty', '0px');
+                
+                const angle = -Math.PI / 2 + (idx * 2 * Math.PI) / N;
+                const ox = Math.cos(angle) * RADIUS;
+                const oy = Math.sin(angle) * RADIUS;
+                
+                container.appendChild(btn);
+
+                // requestAnimationFrame ensures browser has painted the buttons at center before transitioning
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        btn.style.setProperty('--tx', `${ox}px`);
+                        btn.style.setProperty('--ty', `${oy}px`);
+                        btn.classList.add('visible');
+                    }, idx * 25);
+                });
+
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (item.sub.length > 0) {
+                        toggleSubMenu(item.id, ox, oy, angle, btn);
+                    } else {
+                        if (pybridge) {
+                            pybridge.navigate_from_menu(item.id);
+                        }
+                        closeMenu();
+                    }
+                });
+            });
+        }
+
+        function closeMenu() {
+            window.menuOpen = false;
+            activeParentId = null;
+
+            const container = document.getElementById('menu-container');
+            container.classList.remove('open');
+
+            const bubble = document.getElementById('bubble');
+            bubble.classList.remove('bubble-open');
+            bubble.classList.add('bubble-closed');
+
+            const btns = container.querySelectorAll('.menu-btn, .sub-menu-btn');
+
+            // Return to closed center (110, 110) which is offset (-90px, -90px) relative to (200, 200)
+            btns.forEach((btn, idx) => {
+                btn.classList.remove('visible');
+                btn.style.setProperty('--tx', '-90px');
+                btn.style.setProperty('--ty', '-90px');
+            });
+
+            // Clean DOM and resize window after transition completes (400ms)
+            setTimeout(() => {
+                if (!window.menuOpen) {
+                    container.innerHTML = '';
+                    if (pybridge) {
+                        pybridge.toggleMenuState(false);
+                    }
+                }
+            }, 400);
+        }
+
+        let activeParentId = null;
+        function toggleSubMenu(parentId, px, py, parentAngle, parentBtn) {
+            // Remove previous sub menu buttons
+            const prevSubs = document.querySelectorAll('.sub-menu-btn');
+            prevSubs.forEach(s => s.remove());
+
+            // Remove active style from other parents
+            const parents = document.querySelectorAll('.menu-btn');
+            parents.forEach(p => p.classList.remove('active-parent'));
+
+            if (activeParentId === parentId) {
+                // Toggle off
+                activeParentId = null;
+                return;
+            }
+
+            activeParentId = parentId;
+            parentBtn.classList.add('active-parent');
+
+            const item = MENU_STRUCTURE.find(m => m.id === parentId);
+            const subs = item.sub;
+            const n_subs = subs.length;
+            const RADIUS_SUB = 172; // Uniform outer ring radius from center of window (fits nicely inside 400x400)
+            const spread = Math.PI * 0.3; // Symmetrical spread arc
+
+            subs.forEach((sub, i) => {
+                const sbtn = document.createElement('div');
+                sbtn.className = 'sub-menu-btn';
+                sbtn.innerHTML = `<svg viewBox="0 0 24 24">${sub.icon}</svg>`; // Added viewBox="0 0 24 24" to center icons
+                sbtn.title = sub.label;
+
+                // Start position at parent button center
+                sbtn.style.setProperty('--tx', `${px}px`);
+                sbtn.style.setProperty('--ty', `${py}px`);
+
+                let subAngle;
+                if (n_subs > 1) {
+                    subAngle = parentAngle - spread / 2 + (i * spread) / (n_subs - 1);
+                } else {
+                    subAngle = parentAngle;
+                }
+
+                const ox = Math.cos(subAngle) * RADIUS_SUB;
+                const oy = Math.sin(subAngle) * RADIUS_SUB;
+
+                document.getElementById('menu-container').appendChild(sbtn);
+
+                // Animate outward from parent button center to uniform outer ring
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        sbtn.style.setProperty('--tx', `${ox}px`);
+                        sbtn.style.setProperty('--ty', `${oy}px`);
+                        sbtn.classList.add('visible');
+                    }, i * 35);
+                });
+
+                sbtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (pybridge) {
+                        pybridge.navigate_from_menu(sub.id);
+                    }
+                    closeMenu();
+                });
+            });
+        }
+
+        // --- HUD / Public APIs called by Python ---
+        let bubbleTimeout = null;
+
+        function setMascotState(s) {
+            if (['idle', 'dance', 'typing', 'reading', 'writing', 'searching', 'celebrating'].includes(s)) {
+                window.action = s;
+                if (pybridge) pybridge.log("Mascot state changed in JS to: " + s);
+            }
+        }
+
+        function setIsThinking(bool) {
+            window.isThinking = !!bool;
+        }
+
+        function setIsError(bool) {
+            window.isError = !!bool;
+        }
+
+        // Speech bubble text handler
+        function showSpeechBubble(text) {
+            const bubble = document.getElementById('bubble');
+            bubble.textContent = text;
+            bubble.classList.add('visible');
+
+            if (bubbleTimeout) clearTimeout(bubbleTimeout);
+
+            // Hide after 5 seconds
+            bubbleTimeout = setTimeout(() => {
+                bubble.classList.remove('visible');
+            }, 5000);
+        }
+
+        function setVoiceHudActive(bool) {
+            const hud = document.getElementById('voice-toggle-btn');
+            const statusText = hud.querySelector('.voice-status-text');
+            if (bool) {
+                hud.classList.add('active');
+                statusText.textContent = "Voice On";
+            } else {
+                hud.classList.remove('active');
+                statusText.textContent = "Voice Off";
+            }
+        }
+
+        // Voice Toggle Click connects to python to toggle listening
+        document.getElementById('voice-toggle-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (pybridge) {
+                pybridge.toggleVoiceListening();
+            }
+        });
+
+        // Expose functions globally to window object
+        window.setMascotState = setMascotState;
+        window.setIsThinking = setIsThinking;
+        window.setIsError = setIsError;
+        window.showSpeechBubble = showSpeechBubble;
+        window.setVoiceHudActive = setVoiceHudActive;
+    </script>
+</body>
+
+</html>

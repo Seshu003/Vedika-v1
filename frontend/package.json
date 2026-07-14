@@ -16,6 +16,8 @@
     "@codemirror/lang-html": "^6.4.11",
     "@codemirror/lang-python": "^6.2.1",
     "@google/genai": "^2.8.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@uiw/react-codemirror": "^4.25.10",
     "@upstash/redis": "^1.38.0",
     "ai": "^6.0.201",
@@ -31,10 +33,11 @@
     "rehype-autolink-headings": "^7.1.0",
     "remark-gfm": "^4.0.1",
     "remark-slug": "^7.0.1",
-    "three": "^0.150.0",
+    "three": "^0.160.0",
     "ws": "^8.21.0",
     "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0"
+    "xterm-addon-fit": "^0.8.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
