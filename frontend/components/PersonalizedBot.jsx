@@ -11,6 +11,8 @@ import {
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 
 import dynamic from 'next/dynamic';
+const ThreeRobotBot = dynamic(() => import('./ThreeRobotBot'), { ssr: false });
+
 
 
 const getContextSpeech = (path) => {
@@ -719,9 +721,11 @@ export default function PersonalizedBot() {
 
   const handleDragStart = () => {
     isDraggingMascot.current = true;
+    setIsDraggingState(true);
   };
 
   const handleDragEnd = () => {
+    setIsDraggingState(false);
     setTimeout(() => {
       isDraggingMascot.current = false;
     }, 100);
@@ -733,5 +737,418 @@ export default function PersonalizedBot() {
     setIsOpen(!isOpen);
   };
 
-  return null;
+  if (isDesktopConnected) return null;
+
+  return (
+    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-outfit), sans-serif', pointerEvents: 'none' }}>
+      <AnimatePresence>
+        {/* Expandable chat assistant panel */}
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.85, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.85, y: 50 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 250 }}
+            style={{
+              width: 380,
+              height: 520,
+              background: 'rgba(10, 15, 30, 0.85)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(56, 189, 248, 0.35)',
+              borderRadius: 16,
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              bottom: 0,
+              right: 120, // Sit to the left of the mascot
+              position: 'absolute',
+              pointerEvents: 'auto'
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(15, 23, 42, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 10, height: 10, background: '#10B981', borderRadius: '50%', border: '2px solid #0B0F19', position: 'absolute', bottom: 0, right: 0, zIndex: 2 }} />
+                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #38BDF8, #6366F1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Sparkles size={14} color="#ffffff" fill="#ffffff" style={{ alignSelf: 'center' }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    AI Companion
+                  </div>
+                  <div style={{ fontSize: 10.5, color: '#64748B', fontWeight: 600 }}>
+                    Online • Socratic Mode
+                  </div>
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => setIsOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: '#64748B', cursor: 'pointer', padding: 4, borderRadius: '50%' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Context HUD bar */}
+            {activeCtx && (
+              <div style={{
+                background: 'rgba(56, 189, 248, 0.06)',
+                borderBottom: '1px solid rgba(56, 189, 248, 0.15)',
+                padding: '6px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: 10.5,
+                color: '#38BDF8',
+                fontWeight: 700
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Info size={11} />
+                  <span>
+                    Linked to: {activeCtx.page === 'code-puzzle' ? `Step [${activeCtx.currentStepIndex + 1}] of "${activeCtx.puzzleTitle}"` : activeCtx.page === 'playground' ? 'Code Playground' : pathname}
+                  </span>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={includeContext} 
+                    onChange={(e) => setIncludeContext(e.target.checked)}
+                    style={{ accentColor: '#38BDF8', cursor: 'pointer' }}
+                  />
+                  Context
+                </label>
+              </div>
+            )}
+
+            {/* Messages scrolling box */}
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12
+            }}>
+              {messages.map((msg, index) => {
+                const isAI = msg.role === 'assistant';
+                return (
+                  <div 
+                    key={index}
+                    style={{
+                      display: 'flex',
+                      justifyContent: isAI ? 'flex-start' : 'flex-end',
+                      alignItems: 'flex-start',
+                      gap: 8
+                    }}
+                  >
+                    {isAI && (
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                        <Sparkles size={11} color="#38BDF8" fill="#38BDF8" />
+                      </div>
+                    )}
+                    <div style={{
+                      maxWidth: '80%',
+                      background: isAI ? 'rgba(30, 41, 59, 0.5)' : '#38BDF8',
+                      color: isAI ? '#E2E8F0' : '#0B0F19',
+                      border: isAI ? '1px solid rgba(255, 255, 255, 0.06)' : 'none',
+                      borderRadius: isAI ? '0px 12px 12px 12px' : '12px 12px 0px 12px',
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                    }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                );
+              })}
+              {isLoading && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Loader2 size={11} color="#38BDF8" style={{ animation: 'spin 1s linear infinite' }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748B', fontWeight: 600 }}>Bot is thinking...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Quick Actions Footer */}
+            {activeCtx && (activeCtx.page === 'code-puzzle' || activeCtx.page === 'playground') && (
+              <div style={{
+                padding: '6px 12px',
+                background: 'rgba(15, 23, 42, 0.2)',
+                borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                display: 'flex',
+                gap: 6,
+                overflowX: 'auto'
+              }} className="no-scrollbar">
+                <button 
+                  onClick={() => handleQuickAction('explain')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#38BDF8'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <Code size={10} />
+                  Explain Code
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('debug')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#F59E0B'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <AlertCircle size={10} />
+                  Help Debug
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('hint')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#10B981'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <HelpCircle size={10} />
+                  Get Hint
+                </button>
+              </div>
+            )}
+
+            {/* Input field */}
+            <div style={{
+              padding: 12,
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(15, 23, 42, 0.6)',
+              display: 'flex',
+              gap: 8
+            }}>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Ask your tutor companion..."
+                disabled={isLoading}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  color: '#F8FAFC',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={isLoading || !input.trim()}
+                style={{
+                  background: input.trim() ? '#38BDF8' : 'rgba(255,255,255,0.05)',
+                  color: input.trim() ? '#0B0F19' : '#64748B',
+                  border: 'none',
+                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: (isLoading || !input.trim()) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <Send size={13} fill="currentColor" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating speech bubble */}
+      <AnimatePresence>
+        {showSpeech && speechText && !isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            style={{
+              position: 'absolute',
+              bottom: 120,
+              right: 10,
+              background: 'rgba(15, 23, 42, 0.9)',
+              border: '1.5px solid rgba(56, 189, 248, 0.5)',
+              borderRadius: 14,
+              color: '#f1f5f9',
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 500,
+              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+              backdropFilter: 'blur(10px)',
+              maxWidth: 220,
+              minWidth: 150,
+              zIndex: 10000,
+              pointerEvents: 'none'
+            }}
+          >
+            {speechText}
+            <div style={{
+              position: 'absolute',
+              bottom: -8,
+              right: 35,
+              width: 0,
+              height: 0,
+              borderLeft: '8px solid transparent',
+              borderRight: '8px solid transparent',
+              borderTop: '8px solid rgba(15, 23, 42, 0.9)'
+            }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Circular portal menu */}
+      <AnimatePresence>
+        {isNavigating && (
+          <div style={{
+            position: 'absolute',
+            bottom: -30,
+            right: -30,
+            width: 160,
+            height: 160,
+            pointerEvents: 'none',
+            zIndex: 9998
+          }}>
+            {MENU_ITEMS.map((item, idx) => {
+              const angle = (idx * 2 * Math.PI) / MENU_ITEMS.length;
+              const x = Math.cos(angle) * radius;
+              const y = Math.sin(angle) * radius;
+              const isHighlighted = idx === spinningHighlightIndex;
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    left: `calc(50% + ${x}px)`,
+                    top: `calc(50% + ${y}px)`,
+                    transform: 'translate(-50%, -50%)',
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    background: isHighlighted ? 'rgba(56, 189, 248, 0.95)' : 'rgba(15, 23, 42, 0.85)',
+                    border: isHighlighted ? '2.5px solid #ffffff' : '1.5px solid rgba(56, 189, 248, 0.5)',
+                    boxShadow: isHighlighted ? '0 0 20px rgba(56, 189, 248, 0.8)' : '0 4px 10px rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: isHighlighted ? '#0b0f19' : '#38bdf8',
+                    pointerEvents: 'auto',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={() => setHoveredIndex(idx)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  onClick={() => router.push(item.id)}
+                >
+                  <item.Icon size={16} />
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Draggable mascot button */}
+      <motion.div
+        drag
+        dragConstraints={dragConstraints}
+        dragElastic={0.1}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={handleBotClick}
+        style={{
+          width: 100,
+          height: 100,
+          borderRadius: '50%',
+          background: 'rgba(15, 23, 42, 0.55)',
+          border: '1.5px solid rgba(56, 189, 248, 0.35)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 15px rgba(56, 189, 248, 0.15)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'grab',
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          zIndex: 10001,
+          pointerEvents: 'auto'
+        }}
+        whileHover={{ scale: 1.06, borderColor: 'rgba(56, 189, 248, 0.6)' }}
+        whileTap={{ scale: 0.96, cursor: 'grabbing' }}
+      >
+        <ThreeRobotBot
+          action={isDraggingState ? 'flying' : currentAction}
+          width={90}
+          height={90}
+          isDragging={isDraggingState}
+          isError={activeCtx?.error ? true : false}
+          isThinking={isLoading}
+        />
+      </motion.div>
+    </div>
+  );
 }
+
