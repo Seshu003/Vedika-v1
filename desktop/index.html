@@ -527,6 +527,7 @@
         let robotMesh, originalGeometry, robotMaterial;
         let torsoGroup, headGroup;
         let leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup;
+        let paperMesh;
         const props = {};
 
         let modelLoaded = false;
@@ -673,16 +674,17 @@
             laptopGroup.add(laptopBase);
 
             const laptopScreen = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.018), new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.8, roughness: 0.2 }));
-            laptopScreen.position.set(0, 0.01, -0.135);
-            laptopScreen.rotation.x = 0.48;
+            laptopScreen.position.set(0, 0.01, 0.135);
+            laptopScreen.rotation.x = -0.48;
             laptopGroup.add(laptopScreen);
 
             const laptopGlow = new THREE.Mesh(new THREE.PlaneGeometry(0.39, 0.21), new THREE.MeshBasicMaterial({ color: 0x38BDF8 }));
-            laptopGlow.position.set(0, 0.01, -0.124);
-            laptopGlow.rotation.x = 0.48;
+            laptopGlow.position.set(0, 0.01, 0.124);
+            laptopGlow.rotation.x = -0.48;
             laptopGroup.add(laptopGlow);
             props.laptop = laptopGroup;
             laptopGroup.visible = false;
+
 
             // 2. Book
             const bookGroup = new THREE.Group();
@@ -719,6 +721,8 @@
             const paper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.34, 0.005), pageMat);
             paper.position.set(0, 0.01, 0.01);
             clipboardGroup.add(paper);
+            paperMesh = paper;
+
 
             const clip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.02), new THREE.MeshStandardMaterial({ color: 0x94A3B8, metalness: 0.9, roughness: 0.1 }));
             clip.position.set(0, 0.17, 0.015);
@@ -799,7 +803,11 @@
             torsoGroup.rotation.set(0, 0, 0);
             torsoGroup.scale.set(1, 1, 1);
 
+            leftArmGroup.position.set(-0.28, 0.2, 0);
+            rightArmGroup.position.set(0.28, 0.2, 0);
+
             headGroup.rotation.set(0, 0, 0);
+
             leftArmGroup.rotation.set(0, 0, 0);
             rightArmGroup.rotation.set(0, 0, 0);
             leftLegGroup.rotation.set(0, 0, 0);
@@ -827,10 +835,45 @@
             const targetLookX = window.pointer.x * 0.75;
             const targetLookY = window.pointer.y * 0.50;
             headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetLookX, 0.18);
-            headGroup.rotation.x = THREE.MathUtils.lerp(headGroup.rotation.x, -targetLookY, 0.18);
+headGroup.rotation.x = THREE.MathUtils.lerp(headGroup.rotation.x, -targetLookY, 0.18);
 
             // Action dispatcher - Bot stays in its original pose (idle/typing/reading etc) when clicked/dragged
             const activeAction = window.action;
+
+            // Turn off eyes glow when sleeping to simulate closing eyes
+            if (robotMaterial) {
+                if (activeAction === 'sleep') {
+                    if (robotMaterial.emissive) {
+                        robotMaterial.emissive.setHex(0x000000);
+                    }
+                    cyanLight.intensity = 0.05; // Dim the light casting on the face
+                } else {
+                    if (robotMaterial.emissive) {
+                        robotMaterial.emissive.setHex(0x00c8ff);
+                    }
+                    cyanLight.intensity = 0.6; // Restore light
+                }
+            }
+
+            // Clipboard paper sliding animation during file creation
+            if (paperMesh) {
+                if (activeAction === 'writing') {
+                    // Slide out paper over a 5s loop (slide up/out for 2s, hold for 1.5s, slide back for 1.5s)
+                    const loopTime = (t % 5.0);
+                    let slide = 0;
+                    if (loopTime < 2.0) {
+                        slide = loopTime / 2.0;
+                    } else if (loopTime < 3.5) {
+                        slide = 1.0;
+                    } else {
+                        slide = 1.0 - (loopTime - 3.5) / 1.5;
+                    }
+                    paperMesh.position.y = 0.01 + slide * 0.28;
+                    paperMesh.position.z = 0.01 + slide * 0.08;
+                } else {
+                    paperMesh.position.set(0, 0.01, 0.01);
+                }
+            }
 
             if (window.isThinking || activeAction === 'thinking') {
                 headGroup.rotation.y += Math.sin(t * 1.5) * 0.15;
@@ -839,11 +882,11 @@
                 leftArmGroup.rotation.z = -0.5;
                 leftArmGroup.rotation.y = Math.sin(t * 3) * 0.1;
             } else if (activeAction === 'sleep') {
-                // Slumped deep sleeping posture
+                // Slumped deep sleeping posture with chest rise/fall breathing mimic
                 const breathing = Math.sin(t * 1.1);
                 torsoGroup.position.y = -0.25 + breathing * 0.015;
-                torsoGroup.rotation.x = 0.28;
-                headGroup.rotation.x = 0.55;
+                torsoGroup.rotation.x = 0.28 + breathing * 0.03;
+                headGroup.rotation.x = 0.55 - breathing * 0.02;
                 leftArmGroup.rotation.set(0.18 + breathing * 0.02, 0, -0.15);
                 rightArmGroup.rotation.set(0.18 + breathing * 0.02, 0, 0.15);
             } else if (activeAction === 'jolt') {
@@ -941,9 +984,7 @@
             }
 
             renderer.render(scene, camera);
-
         }
-
 
         animate();
 
@@ -951,6 +992,7 @@
         let dragTimer = null;
         let isDragAction = false;
         let clickTime = 0;
+
 
         window.addEventListener('mousedown', (e) => {
             // Exclude speech bubble, menu buttons, sub-menu buttons, and voice toggle from drag trigger

@@ -199,8 +199,14 @@ class DesktopMascot(QWidget):
         self.was_away = False
         self.coding_seconds = 0
         self.reading_seconds = 0
+        self.desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        try:
+            self.desktop_files = set(os.listdir(self.desktop_path)) if os.path.exists(self.desktop_path) else set()
+        except Exception:
+            self.desktop_files = set()
 
         # Windows API tracking attributes
+
         self.active_app_seconds = 0
         self.current_active_window = ""
         self.idle_alert_triggered = False
@@ -657,6 +663,27 @@ class DesktopMascot(QWidget):
                     self.speak("Ah, welcome back!")
                     return
 
+                # Check Desktop file creation/deletion
+                if os.path.exists(self.desktop_path):
+                    try:
+                        current_files = set(os.listdir(self.desktop_path))
+                        added = current_files - self.desktop_files
+                        removed = self.desktop_files - current_files
+                        if added or removed:
+                            self.desktop_files = current_files
+                            if added:
+                                created_file = list(added)[0]
+                                self.set_state("writing") # Trigger paper-slide animation
+                                self.speak(f"Oh! I saw you created a new file: {created_file}. Neat! 📁")
+                                return
+                            elif removed:
+                                deleted_file = list(removed)[0]
+                                self.set_state("searching")
+                                self.speak(f"A file was deleted: {deleted_file}. Keeping things clean? 🧹")
+                                return
+                    except Exception as de:
+                        print(f"[DesktopMonitor] File check error: {de}")
+
                 # Normal app tracking
                 hwnd = win32gui.GetForegroundWindow()
                 title = win32gui.GetWindowText(hwnd)
@@ -664,8 +691,11 @@ class DesktopMascot(QWidget):
                 title_lower = title.lower()
                 matched = False
                 
-                # 1. Coding mimic
-                if any(x in title_lower for x in ["visual studio", "vscode", "code.exe", "pycharm", "eclipse", "sublime", "notepad++", "notepad", ".py", ".js", ".html", ".css", ".cpp", ".java", ".go", ".rs", ".c"]):
+                # Check browser tab context first to override general web searching
+                is_browser = any(x in title_lower for x in ["chrome", "edge", "firefox", "browser", "opera", "safari"])
+                
+                # 1. Coding/Typing mimic (IDE or browser coding page)
+                if any(x in title_lower for x in ["visual studio", "vscode", "code.exe", "pycharm", "eclipse", "sublime", "notepad++", "notepad", ".py", ".js", ".html", ".css", ".cpp", ".java", ".go", ".rs", ".c"]) or (is_browser and any(x in title_lower for x in ["code", "editor", "puzzle", "playground", "tutor"])):
                     self.set_state("typing")
                     self.coding_seconds += 1
                     self.reading_seconds = 0
@@ -676,8 +706,8 @@ class DesktopMascot(QWidget):
                         self.coding_seconds = 0
                         self.speak("You have been coding for 30 minutes! Please take a 5-minute break. 🌸")
                 
-                # 2. Reading mimic
-                elif any(x in title_lower for x in ["pdf", "acrobat", "reader", "document", "word", "textbook", "epub", "kindle"]):
+                # 2. Reading/Lesson mimic (PDF reader or browser lesson page)
+                elif any(x in title_lower for x in ["pdf", "acrobat", "reader", "document", "word", "textbook", "epub", "kindle"]) or (is_browser and any(x in title_lower for x in ["lesson", "read", "book", "resource", "course"])):
                     self.set_state("reading")
                     self.reading_seconds += 1
                     self.coding_seconds = 0
@@ -688,23 +718,23 @@ class DesktopMascot(QWidget):
                         self.reading_seconds = 0
                         self.speak("You have been reading for 30 minutes! Please take a 5-minute break. 🌸")
                 
-                # 3. YouTube mimic
+                # 3. Writing mimic (file creation explorer or browser quiz/assignment page)
+                elif any(x in title_lower for x in ["explorer", "create file", "delete file", "folder", "copying", "moving"]) or (is_browser and any(x in title_lower for x in ["quiz", "assignment", "test", "exam", "submit"])):
+                    self.set_state("writing")
+                    self.coding_seconds = 0
+                    self.reading_seconds = 0
+                    matched = True
+                
+                # 4. YouTube mimic
                 elif "youtube" in title_lower:
                     self.set_state("youtube")
                     self.coding_seconds = 0
                     self.reading_seconds = 0
                     matched = True
                 
-                # 4. Gaming mimic
+                # 5. Gaming mimic
                 elif any(x in title_lower for x in ["steam", "epic games", "minecraft", "valorant", "gta", "roblox", "league", "game", "fifa", "fortnite"]):
                     self.set_state("gaming")
-                    self.coding_seconds = 0
-                    self.reading_seconds = 0
-                    matched = True
-                
-                # 5. Desktop file mimic
-                elif any(x in title_lower for x in ["explorer", "create file", "delete file", "folder", "copying", "moving"]):
-                    self.set_state("writing")
                     self.coding_seconds = 0
                     self.reading_seconds = 0
                     matched = True
@@ -716,8 +746,8 @@ class DesktopMascot(QWidget):
                     self.reading_seconds = 0
                     matched = True
                 
-                # 7. Web browsing mimic
-                elif any(x in title_lower for x in ["chrome", "edge", "firefox", "browser", "opera", "safari"]):
+                # 7. Web browsing search mimic
+                elif is_browser:
                     self.set_state("searching")
                     self.coding_seconds = 0
                     self.reading_seconds = 0
@@ -731,6 +761,7 @@ class DesktopMascot(QWidget):
                         self.set_state("idle")
             except Exception as e:
                 print(f"[SystemMonitor] Error: {e}")
+
         
         self.connect_websocket()
 
