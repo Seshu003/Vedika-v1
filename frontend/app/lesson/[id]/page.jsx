@@ -157,6 +157,40 @@ export default function LessonRoute() {
     loadLesson();
   }, [id]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && lesson) {
+      window.__vyomanta_context = {
+        page: 'courses',
+        title: lesson.title || 'Lesson Workspace',
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        moduleId: lesson.module?.id || lesson.moduleTitle || 'general',
+        courseId: lesson.courseId || 'general'
+      };
+      
+      window.dispatchEvent(new Event('storage'));
+
+      const stored = localStorage.getItem('frappe_user');
+      let email = '';
+      if (stored) {
+        try {
+          const u = JSON.parse(stored);
+          email = u.email || '';
+        } catch {}
+      }
+
+      import('@/lib/vedikaClient').then(({ vedika }) => {
+        vedika.setUser(email);
+        vedika.sendActivity('navigate', `/lesson/${lesson.id}`, {
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          moduleId: lesson.module?.id || lesson.moduleTitle || 'general'
+        });
+      }).catch(() => {});
+    }
+  }, [lesson]);
+
+
   const onComplete = async (lessonId) => {
     let key = 'completed_lessons';
     let email = '';

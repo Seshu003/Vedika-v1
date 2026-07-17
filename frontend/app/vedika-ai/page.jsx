@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Brain, Code, Zap } from 'lucide-react';
+import { ArrowRight, Brain, Code, Zap, MessageSquare } from 'lucide-react';
 import { T } from '@/lib/lms-data';
 
 export default function VedikaAIHub() {
@@ -32,6 +32,14 @@ export default function VedikaAIHub() {
       gradient: 'linear-gradient(135deg, #F97316 0%, #EF4444 100%)',
       btnText: 'Solve Puzzles',
       Icon: Zap
+    },
+    {
+      id: 'viva-interview',
+      title: 'Viva & Interview',
+      description: 'Practice conceptual viva voice questions or simulate real technical coding job interviews.',
+      gradient: 'linear-gradient(135deg, #EC4899 0%, #D946EF 100%)',
+      btnText: 'Start Practice',
+      Icon: MessageSquare
     }
   ];
 
@@ -73,7 +81,13 @@ export default function VedikaAIHub() {
             key={id}
             whileHover={{ y: -6, scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={() => router.push(`/vedika-ai/${id}`)}
+            onClick={() => {
+              if (id === 'viva-interview') {
+                router.push('/viva-interview');
+              } else {
+                router.push(`/vedika-ai/${id}`);
+              }
+            }}
             style={{
               background: gradient,
               borderRadius: 16,

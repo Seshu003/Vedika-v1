@@ -247,6 +247,19 @@ export default function Playground({
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.write('\n\x1b[90m--- Program finished ---\x1b[0m\n');
     }
+
+    const stored = localStorage.getItem('frappe_user');
+    let email = '';
+    if (stored) {
+      try { email = JSON.parse(stored).email || ''; } catch {}
+    }
+    import('@/lib/vedikaClient').then(({ vedika }) => {
+      vedika.setUser(email);
+      vedika.sendActivity('compile_code', '/coding-tutor', {
+        language: 'python',
+        codeSnippet: code
+      });
+    }).catch(() => {});
   };
 
   const onError = (msg) => {
@@ -259,6 +272,20 @@ export default function Playground({
       terminalInstanceRef.current.write(`\x1b[31mError: ${msg}\x1b[0m\n`);
     }
     if (onTraceComplete) onTraceComplete(null);
+
+    const stored = localStorage.getItem('frappe_user');
+    let email = '';
+    if (stored) {
+      try { email = JSON.parse(stored).email || ''; } catch {}
+    }
+    import('@/lib/vedikaClient').then(({ vedika }) => {
+      vedika.setUser(email);
+      vedika.sendActivity('compile_code', '/coding-tutor', {
+        errorMessage: msg,
+        language: 'python',
+        codeSnippet: code
+      });
+    }).catch(() => {});
   };
 
   const validateTraceData = (trace) => {

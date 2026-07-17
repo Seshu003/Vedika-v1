@@ -214,6 +214,15 @@ export default function LessonPage({ lesson, completed = {}, onComplete }) {
       // Refresh attempts list
       const subs = await getQuizSubmissions();
       setQuizAttempts(subs.filter(s => s.quiz === officialQuiz.id && s.member === currentUser.username));
+
+      // Notify the desktop companion of the quiz score
+      import('@/lib/vedikaClient').then(({ vedika }) => {
+        vedika.setUser(currentUser.email || '');
+        vedika.sendActivity('submit_quiz', `/lesson/${lesson.id}`, {
+          quizTopic: officialQuiz.title,
+          quizScore: percentage
+        });
+      }).catch(() => {});
     } catch (e) {
       console.error(e);
     } finally {

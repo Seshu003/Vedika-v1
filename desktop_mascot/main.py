@@ -10,6 +10,7 @@ import base64
 import socket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread, Lock
+import queue
 from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QObject, QTimer, QEvent
 from PyQt5.QtWidgets import (QApplication, QWidget, QMenu, QDesktopWidget,
                              QVBoxLayout, QAction, QSystemTrayIcon)
@@ -95,7 +96,11 @@ def set_current_email(email: str):
     global _current_user_email
     if email and email.strip():
         with _user_lock:
-            _current_user_email = email.strip()
+            val = email.strip()
+            if val == "local_user":
+                _current_user_email = "local_user"
+            else:
+                _current_user_email = hashlib.sha256(val.lower().encode("utf-8")).hexdigest()
             vdb.db_ensure_user(_current_user_email)
 
 
@@ -435,21 +440,149 @@ def handle_gemini_result(result: dict, signals, voice_mode: bool = False):
 #   TTS ENGINE
 # ═══════════════════════════════════════════════════════════════
 
+def ensure_piper_models() -> tuple[str, str]:
+    """Ensure Piper voice model and config are present in ~/.vedika_mascot/models/.
+    Returns (model_path, config_path).
+    """
+    models_dir = os.path.join(get_data_dir(), "models")
+    os.makedirs(models_dir, exist_ok=True)
+    
+    model_path = os.path.join(models_dir, "en_US-lessac-medium.onnx")
+    config_path = os.path.join(models_dir, "en_US-lessac-medium.onnx.json")
+    
+    base_url = "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
+    
+    def download_file(url, dest_path):
+        import urllib.request
+        print(f"[TTS] Downloading Piper model asset from {url} ...")
+        try:
+            urllib.request.urlretrieve(url, dest_path)
+            print(f"[TTS] Successfully downloaded to {dest_path}")
+        except Exception as e:
+            print(f"[TTS] Download error: {e}")
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+            raise
+            
+    if not os.path.exists(model_path):
+        download_file(f"{base_url}/en_US-lessac-medium.onnx", model_path)
+    if not os.path.exists(config_path):
+        download_file(f"{base_url}/en_US-lessac-medium.onnx.json", config_path)
+        
+    return model_path, config_path
+
+
 class TTSEngine:
     def __init__(self):
-        self._engine   = None
         self.is_speaking = False
-        self._init_engine()
+        self._engine = None
+        self._piper_voice = None
+        self._queue = queue.Queue()
+        self._thread = Thread(target=self._worker_loop, daemon=True)
+        self._thread.start()
 
-    def _init_engine(self):
+    def _worker_loop(self):
+        # 1. Initialize COM library on Windows
+        if os.name == 'nt':
+            try:
+                import ctypes
+                ctypes.windll.ole32.CoInitialize(None)
+            except Exception:
+                pass
+
+        # 2. Try initializing Piper TTS
         try:
-            import pyttsx3
-            self._engine = pyttsx3.init()
-            self._engine.setProperty("rate", 165)
-            self._engine.setProperty("volume", 0.95)
-            self._select_voice()
-        except Exception as e:
-            print(f"TTS init error: {e}")
+            print("[TTS] Attempting to load offline Piper voice engine...")
+            model_path, config_path = ensure_piper_models()
+            from piper.voice import PiperVoice
+            self._piper_voice = PiperVoice.load(model_path)
+            print("[TTS] Successfully loaded offline Piper TTS voice model!")
+        except Exception as piper_err:
+            print(f"[TTS] Piper voice model init failed (using pyttsx3 fallback): {piper_err}")
+            self._piper_voice = None
+
+        # 3. Fallback to pyttsx3 if Piper not available
+        if not self._piper_voice:
+            try:
+                import pyttsx3
+                self._engine = pyttsx3.init()
+                self._engine.setProperty("rate", 165)
+                self._engine.setProperty("volume", 0.95)
+                self._select_voice()
+            except Exception as e:
+                print(f"[TTS] pyttsx3 init error: {e}")
+                self._engine = None
+
+        # 4. Processing Loop
+        while True:
+            try:
+                task = self._queue.get()
+                if task is None:
+                    break
+                action, text = task
+                if action == "speak":
+                    self.is_speaking = True
+                    start_time = time.time()
+                    try:
+                        clean = "".join(c if ord(c) < 0x1F300 else " " for c in text).strip()
+                        if clean:
+                            if self._piper_voice:
+                                # Synthesize using local Piper TTS
+                                wav_path = os.path.join(get_data_dir(), "temp_speech.wav")
+                                import wave
+                                with wave.open(wav_path, 'wb') as wav_file:
+                                    wav_file.setnchannels(1)
+                                    wav_file.setsampwidth(2)
+                                    wav_file.setframerate(self._piper_voice.config.sample_rate)
+                                    self._piper_voice.synthesize(clean, wav_file)
+                                
+                                # Measure Generation Latency
+                                elapsed = time.time() - start_time
+                                print(f"[TTS Latency] Synthesized speech in {elapsed:.3f}s (Piper)")
+                                
+                                # Play WAV synchronously
+                                if os.name == 'nt':
+                                    import winsound
+                                    winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+                                else:
+                                    # Cross-platform fallback for play (aplay/afplay)
+                                    import subprocess
+                                    cmd = "afplay" if sys.platform == "darwin" else "aplay"
+                                    try:
+                                        subprocess.run([cmd, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                    except Exception:
+                                        pass
+                                try:
+                                    os.remove(wav_path)
+                                except Exception:
+                                    pass
+                            elif self._engine:
+                                # Synthesize using pyttsx3 fallback
+                                self._engine.say(clean)
+                                self._engine.runAndWait()
+                                elapsed = time.time() - start_time
+                                print(f"[TTS Latency] Synthesized speech in {elapsed:.3f}s (pyttsx3)")
+                    except Exception as speak_err:
+                        print(f"[TTS] speak error in worker thread: {speak_err}")
+                    finally:
+                        self.is_speaking = False
+                elif action == "stop":
+                    if self._engine:
+                        try:
+                            self._engine.stop()
+                        except Exception:
+                            pass
+                    # If Piper is playing winsound, cancel it
+                    if self._piper_voice and os.name == 'nt':
+                        try:
+                            import winsound
+                            winsound.PlaySound(None, 0)
+                        except Exception:
+                            pass
+                    self.is_speaking = False
+                self._queue.task_done()
+            except Exception as loop_err:
+                print(f"[TTS] worker loop error: {loop_err}")
 
     def _select_voice(self):
         if not self._engine:
@@ -466,33 +599,58 @@ class TTSEngine:
             self._engine.setProperty("voice", voices[0].id)
 
     def speak(self, text: str):
-        if not self._engine:
-            return
-        def _run():
-            self.is_speaking = True
+        # Cancel any pending speech
+        while not self._queue.empty():
             try:
-                # Strip emoji codepoints for cleaner TTS
-                clean = "".join(c if ord(c) < 0x1F300 else " " for c in text).strip()
-                self._engine.say(clean)
-                self._engine.runAndWait()
-            except Exception as e:
-                print(f"TTS speak error: {e}")
-            finally:
-                self.is_speaking = False
-        Thread(target=_run, daemon=True).start()
+                self._queue.get_nowait()
+                self._queue.task_done()
+            except queue.Empty:
+                break
+        
+        self._queue.put(("speak", text))
 
     def stop(self):
-        if self._engine:
+        # Clear queue and issue stop
+        while not self._queue.empty():
             try:
-                self._engine.stop()
-            except Exception:
-                pass
-        self.is_speaking = False
+                self._queue.get_nowait()
+                self._queue.task_done()
+            except queue.Empty:
+                break
+        self._queue.put(("stop", ""))
 
 
-# ═══════════════════════════════════════════════════════════════
-#   VOICE LISTENER  (push-to-talk)
-# ═══════════════════════════════════════════════════════════════
+# Global Whisper model cache to avoid re-loading latency
+_whisper_model = None
+_whisper_supported = None
+
+def check_whisper_supported() -> bool:
+    """Dry-run import faster_whisper in a subprocess to check for AVX/AVX2 or DLL support.
+    Prevents C++ level Illegal Instruction abort crashes from killing the main PyQt process.
+    """
+    global _whisper_supported
+    if _whisper_supported is not None:
+        return _whisper_supported
+    try:
+        import subprocess
+        model_dir = os.path.join(os.path.expanduser("~"), ".vedika_mascot", "models", "whisper-tiny.en")
+        if os.path.exists(model_dir) and os.listdir(model_dir):
+            # Test full local instantiation to verify CPU vector instruction support
+            test_script = (
+                "from faster_whisper import WhisperModel\n"
+                f"WhisperModel(r'{model_dir}', device='cpu', compute_type='int8', cpu_threads=1, local_files_only=True)\n"
+            )
+        else:
+            # Just test import compatibility if local folder is empty
+            test_script = "import faster_whisper\n"
+            
+        cmd = [sys.executable, "-c", test_script]
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        _whisper_supported = (res.returncode == 0)
+    except Exception:
+        _whisper_supported = False
+    return _whisper_supported
+
 
 class VoiceListener(QObject):
     result_ready      = pyqtSignal(str)
@@ -505,6 +663,27 @@ class VoiceListener(QObject):
         self.tts           = tts
         self._active       = False
         self.mic_available = None   # None = unchecked, True/False after first use
+        # Pre-warm local Whisper model in background
+        Thread(target=self._prewarm_whisper, daemon=True).start()
+
+    def _prewarm_whisper(self):
+        global _whisper_model
+        if not check_whisper_supported():
+            print("[STT] Local faster-whisper is not supported or failed to import on this hardware. Defaulting to Google STT.")
+            return
+        try:
+            from faster_whisper import WhisperModel
+            if _whisper_model is None:
+                model_dir = os.path.join(get_data_dir(), "models", "whisper-tiny.en")
+                if os.path.exists(model_dir) and os.listdir(model_dir):
+                    print(f"[STT] Pre-warming local offline faster-whisper model from {model_dir}...")
+                    _whisper_model = WhisperModel(model_dir, device="cpu", compute_type="int8", cpu_threads=4, local_files_only=True)
+                else:
+                    print("[STT] Pre-warming local faster-whisper model (tiny.en) from HF Hub in background...")
+                    _whisper_model = WhisperModel("tiny.en", device="cpu", compute_type="int8", cpu_threads=4)
+                print("[STT] Pre-warmed local faster-whisper model successfully!")
+        except Exception as e:
+            print(f"[STT] Background pre-warming faster-whisper failed: {e}")
 
     def check_mic(self) -> bool:
         """Quick synchronous check for a default input device."""
@@ -530,30 +709,62 @@ class VoiceListener(QObject):
         Thread(target=self._listen_once, daemon=True).start()
 
     def _listen_once(self):
+        global _whisper_model
         try:
             import speech_recognition as sr
             r = sr.Recognizer()
             r.energy_threshold         = 800
             r.dynamic_energy_threshold = True
-            r.pause_threshold          = 0.8
+            r.pause_threshold          = 0.55  # Shave 250ms off silence cutoff latency
             # Wait until TTS finishes to avoid echo
             while self.tts.is_speaking:
                 time.sleep(0.1)
             with sr.Microphone() as source:
                 self.mic_available = True
-                r.adjust_for_ambient_noise(source, duration=0.4)
+                r.adjust_for_ambient_noise(source, duration=0.15)  # Shave 250ms off mic adjust latency
                 try:
                     audio = r.listen(source, timeout=6, phrase_time_limit=12)
                 except sr.WaitTimeoutError:
                     return
-            try:
-                text = r.recognize_google(audio, language="en-IN")
-                if text.strip():
-                    self.result_ready.emit(text.strip())
-            except sr.UnknownValueError:
-                pass
-            except sr.RequestError as e:
-                print(f"STT API error: {e}")
+
+            # Transcription Phase
+            transcribe_start = time.time()
+            text = None
+
+            # 1. Try local faster-whisper (only if already loaded in background)
+            if _whisper_model is not None:
+                try:
+                    import io
+                    wav_bytes = audio.get_wav_data()
+                    wav_stream = io.BytesIO(wav_bytes)
+                    segments, info = _whisper_model.transcribe(wav_stream, beam_size=5)
+                    text = " ".join([segment.text for segment in segments]).strip()
+                    
+                    elapsed = time.time() - transcribe_start
+                    if text:
+                        print(f"[STT Latency] Transcribed '{text}' in {elapsed:.3f}s (faster-whisper)")
+                except Exception as whisper_err:
+                    print(f"[STT] Local faster-whisper transcription error: {whisper_err}. Falling back to Google STT.")
+                    text = None
+            else:
+                # Local model not ready/failed to load
+                text = None
+
+            # 2. Online Google STT Fallback
+            if text is None:
+                try:
+                    text = r.recognize_google(audio, language="en-IN")
+                    elapsed = time.time() - transcribe_start
+                    if text:
+                        print(f"[STT Latency] Transcribed '{text}' in {elapsed:.3f}s (Google STT)")
+                except sr.UnknownValueError:
+                    pass
+                except sr.RequestError as e:
+                    print(f"[STT] Google STT API error: {e}")
+
+            if text and text.strip():
+                self.result_ready.emit(text.strip())
+
         except ImportError:
             print("speech_recognition not installed. Run: pip install SpeechRecognition pyaudio")
         except Exception as e:
@@ -672,7 +883,7 @@ class WebSocketBroadcaster:
             if self.signals:
                 self.signals.webapp_status.emit(True)
 
-            # Keep alive — read frames to detect close
+            # Keep alive — read and parse frames
             while True:
                 try:
                     header = sock.recv(2)
@@ -683,19 +894,64 @@ class WebSocketBroadcaster:
                     opcode = fin_opcode & 0x0F
                     if opcode == 0x8:  # close frame
                         break
+
                     payload_len = mask_len & 0x7F
+                    actual_len = payload_len
                     if payload_len == 126:
-                        sock.recv(2)
+                        len_bytes = sock.recv(2)
+                        if len(len_bytes) < 2:
+                            break
+                        actual_len = struct.unpack("!H", len_bytes)[0]
                     elif payload_len == 127:
-                        sock.recv(8)
+                        len_bytes = sock.recv(8)
+                        if len(len_bytes) < 8:
+                            break
+                        actual_len = struct.unpack("!Q", len_bytes)[0]
+
+                    mask_key = b""
                     masked = (mask_len & 0x80) != 0
                     if masked:
-                        sock.recv(4)   # masking key
-                        if payload_len:
-                            sock.recv(payload_len)
-                    elif payload_len:
-                        sock.recv(payload_len)
-                except Exception:
+                        mask_key = sock.recv(4)
+                        if len(mask_key) < 4:
+                            break
+
+                    payload = b""
+                    if actual_len > 0:
+                        to_read = actual_len
+                        while to_read > 0:
+                            chunk = sock.recv(min(to_read, 4096))
+                            if not chunk:
+                                break
+                            payload += chunk
+                            to_read -= len(chunk)
+
+                    if len(payload) == actual_len:
+                        if masked and mask_key:
+                            payload = bytes(b ^ mask_key[idx % 4] for idx, b in enumerate(payload))
+                        
+                        if opcode == 0x9: # ping frame
+                            # Respond with pong frame (opcode 0xA, server payload is unmasked)
+                            if actual_len <= 125:
+                                pong_header = struct.pack("BB", 0x8A, actual_len)
+                            elif actual_len <= 65535:
+                                pong_header = struct.pack("!BBH", 0x8A, 126, actual_len)
+                            else:
+                                pong_header = struct.pack("!BBQ", 0x8A, 127, actual_len)
+                            sock.sendall(pong_header + payload)
+                        elif opcode == 0x1: # text frame
+                            try:
+                                text_data = payload.decode("utf-8", errors="ignore")
+                                event_data = json.loads(text_data)
+                                print(f"[WS] Received client event: {event_data}")
+                                if event_data.get("event") == "tab_change":
+                                    tab = event_data.get("tab")
+                                    if tab and self.signals:
+                                        print(f"[WS] Client changed tab to: {tab}")
+                                        self.signals.record_activity.emit()
+                            except Exception as parse_err:
+                                print(f"[WS] Error parsing client frame: {parse_err}")
+                except Exception as loop_err:
+                    print(f"[WS] Read loop error: {loop_err}")
                     break
         except Exception as e:
             print(f"[WS] Client error: {e}")
@@ -807,17 +1063,18 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             req   = self._read_json()
             email = req.get("userId") or get_current_email()
             set_current_email(email)
+            hashed = get_current_email()
 
             name = (req.get("name") or "Student").strip() or "Student"
             age  = int(req.get("age") or 16)
-            vdb.db_set_profile(email, name, age)
+            vdb.db_set_profile(hashed, name, age)
 
             cfg = load_config()
             if req.get("apiKey"):
                 cfg["gemini_api_key"] = req["apiKey"].strip()
                 save_config(cfg)
             self._sig.record_activity.emit()
-            self._send_json({"ok": True, "user": email})
+            self._send_json({"ok": True, "user": hashed})
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
@@ -960,75 +1217,6 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             self._send_json(decision)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
-
-def match_local_navigation(message: str) -> str:
-    """
-    Check if the user message is a simple navigation command.
-    Returns the resolved page name (e.g. 'dashboard', 'courses', 'progress', etc.) or None.
-    """
-    msg = message.lower().strip()
-    
-    # Remove common command prefixes
-    for prefix in ["open ", "go to ", "take me to ", "show ", "navigate to "]:
-        if msg.startswith(prefix):
-            msg = msg[len(prefix):].strip()
-            break
-            
-    # Clean trailing punctuation and spaces
-    msg = msg.rstrip(".!? ")
-    
-    # Map spoken names to structural page identifiers
-    mappings = {
-        "dashboard": "dashboard",
-        "courses": "courses",
-        "course": "courses",
-        "quiz": "quizzes",
-        "quizzes": "quizzes",
-        "assignment": "assignments",
-        "assignments": "assignments",
-        "resource": "resources",
-        "resources": "resources",
-        "ask ai": "general-tutor",
-        "general tutor": "general-tutor",
-        "ask tutor": "general-tutor",
-        "ask your ai tutor": "general-tutor",
-        "ask your ai": "general-tutor",
-        "tutor": "dashboard",  # map generic tutor requests to dashboard fallback
-        "ai tutor": "dashboard",
-        "tutotr": "dashboard",  # handle student spelling typos
-        "code tutor": "coding-tutor",
-        "code with ai tutor": "coding-tutor",
-        "coding tutor": "coding-tutor",
-        "code puzzle": "code-puzzle",
-        "puzzle": "code-puzzle",
-        "jobs": "jobs",
-        "job": "jobs",
-        "progress": "progress",
-        "grade": "grades",
-        "grades": "grades",
-        "physics": "physics-lab",
-        "physics lab": "physics-lab",
-        "chemistry": "chemistry-lab",
-        "chemistry lab": "chemistry-lab",
-        "biology": "biology-lab",
-        "biology lab": "biology-lab",
-        "lab": "vedika-labs",
-        "labs": "vedika-labs",
-        "profile": "profile",
-        "login": "login",
-        "home": "home"
-    }
-    
-    # Check direct match
-    if msg in mappings:
-        return mappings[msg]
-        
-    # Check partial match (e.g. "open the dashboard" -> matches "dashboard")
-    for keyword, page in mappings.items():
-        if keyword in msg:
-            return page
-            
-    return None
 
 
     # ── /api/chat ─────────────────────────────────────────────
@@ -1196,6 +1384,56 @@ def match_local_navigation(message: str) -> str:
             self._send_json(decision)
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
+
+
+def match_local_navigation(message: str) -> str:
+    """
+    Check if the user message is a simple navigation command.
+    Returns the resolved page name (e.g. 'dashboard', 'courses', 'progress', etc.) or None.
+    """
+    msg = message.lower().strip()
+    
+    # Remove common command prefixes
+    for prefix in ["open ", "go to ", "take me to ", "show ", "navigate to "]:
+        if msg.startswith(prefix):
+            msg = msg[len(prefix):].strip()
+            break
+            
+    # Clean trailing punctuation and spaces
+    msg = msg.rstrip(".!? ")
+    
+    # Map spoken names to structural page identifiers
+    mappings = {
+        "dashboard": "dashboard",
+        "courses": "courses",
+        "course": "courses",
+        "quiz": "quizzes",
+        "quizzes": "quizzes",
+        "grade": "grades",
+        "grades": "grades",
+        "physics": "physics-lab",
+        "physics lab": "physics-lab",
+        "chemistry": "chemistry-lab",
+        "chemistry lab": "chemistry-lab",
+        "biology": "biology-lab",
+        "biology lab": "biology-lab",
+        "lab": "vedika-labs",
+        "labs": "vedika-labs",
+        "profile": "profile",
+        "login": "login",
+        "home": "home"
+    }
+    
+    # Check direct match
+    if msg in mappings:
+        return mappings[msg]
+        
+    # Check partial match (e.g. "open the dashboard" -> matches "dashboard")
+    for keyword, page in mappings.items():
+        if keyword in msg:
+            return page
+            
+    return None
 
 
 class DesktopServer(HTTPServer):

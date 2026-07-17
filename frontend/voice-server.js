@@ -14,6 +14,14 @@ const GEMINI_KEYS = [
   process.env.GEMINI_API_KEY_4
 ].filter(Boolean);
 
+const globalKeyCooldowns = new Map();
+const COOLDOWN_MS = 60000;
+function markKeyFailed(key) {
+  if (key) {
+    globalKeyCooldowns.set(key, Date.now() + COOLDOWN_MS);
+  }
+}
+
 let connectionCount = 0;
 
 function getGeminiClient() {
@@ -112,48 +120,117 @@ wss.on('connection', async (clientWs, request) => {
   if (memoryCtx) systemInstruction += memoryCtx;
 
   let geminiSession = null;
+  const failedKeys = new Set();
+  let reconnectCount = 0;
+  const MAX_RECONNECTS = 5;
+
+  async function establishGeminiSession() {
+    let success = false;
+    let lastErr = null;
+
+    while (!success) {
+      const now = Date.now();
+      const availableKeys = GEMINI_KEYS.filter(k => {
+        if (failedKeys.has(k)) return false;
+        const cooldownEnd = globalKeyCooldowns.get(k);
+        if (cooldownEnd && now < cooldownEnd) return false;
+        return true;
+      });
+
+      let keysToTry = availableKeys;
+      if (keysToTry.length === 0) {
+        // Fallback: ignore global cooldown if all are cooled down, but still respect local socket connection failures
+        keysToTry = GEMINI_KEYS.filter(k => !failedKeys.has(k));
+      }
+
+      if (keysToTry.length === 0) {
+        throw new Error(lastErr ? `All API keys failed. Last error: ${lastErr.message}` : 'All configured Gemini API keys have failed.');
+      }
+
+      const apiKey = keysToTry[connectionCount % keysToTry.length];
+      connectionCount++;
+      console.log(`[VoiceWS] Connecting to Gemini Live with key index ${GEMINI_KEYS.indexOf(apiKey)}`);
+
+      try {
+        const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+        geminiSession = await ai.live.connect({
+          model: 'gemini-3.1-flash-live-preview',
+          callbacks: {
+            onmessage: (message) => {
+              const content = message.serverContent;
+              if (!content) return;
+              for (const part of content.modelTurn?.parts || []) {
+                if (part.inlineData?.data) {
+                  clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+                }
+              }
+              if (content.outputTranscription?.text) {
+                clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
+              }
+              if (content.interrupted) {
+                clientWs.send(JSON.stringify({ type: 'interrupted' }));
+              }
+              if (content.inputTranscription?.text?.trim()) {
+                const sentiment = analyzeSentiment(content.inputTranscription.text);
+                clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
+              }
+            },
+            onclose: () => {
+              clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor connection closed.' }));
+            },
+            onerror: async (error) => {
+              console.error('[VoiceWS] Session error:', error);
+              const errStr = String(error).toLowerCase();
+              if (errStr.includes('429') || errStr.includes('quota') || errStr.includes('limit') || errStr.includes('resource_exhausted') || errStr.includes('403') || errStr.includes('401')) {
+                console.warn('[VoiceWS] Rate limit or authorization hit. Attempting to rotate key and reconnect...');
+                failedKeys.add(apiKey);
+                markKeyFailed(apiKey);
+
+                reconnectCount++;
+                if (reconnectCount > MAX_RECONNECTS) {
+                  console.error('[VoiceWS] Max reconnect attempts exceeded.');
+                  clientWs.send(JSON.stringify({ type: 'error', message: 'Tutor session connection lost due to persistent rate limits.' }));
+                  clientWs.close();
+                  return;
+                }
+
+                try {
+                  if (geminiSession) {
+                    try { geminiSession.close(); } catch {}
+                  }
+                  clientWs.send(JSON.stringify({ type: 'status', message: 'Re-establishing connection with a different key...' }));
+                  await establishGeminiSession();
+                } catch (reconnectErr) {
+                  console.error('[VoiceWS] Failed to reconnect after key rotation:', reconnectErr);
+                  clientWs.send(JSON.stringify({ type: 'error', message: `Setup failed: ${reconnectErr.message}` }));
+                  clientWs.close();
+                }
+              } else {
+                clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
+              }
+            },
+          },
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+            systemInstruction,
+            outputAudioTranscription: {},
+            inputAudioTranscription: {},
+          },
+        });
+        success = true;
+      } catch (err) {
+        console.error(`[VoiceWS] Connection attempt failed with key index ${GEMINI_KEYS.indexOf(apiKey)}:`, err.message);
+        failedKeys.add(apiKey);
+        markKeyFailed(apiKey);
+        lastErr = err;
+      }
+    }
+  }
+
   try {
     clientWs.send(JSON.stringify({ type: 'status', message: 'Establishing low-latency connection to Gemini...' }));
-    const ai = getGeminiClient();
-    geminiSession = await ai.live.connect({
-      model: 'gemini-3.1-flash-live-preview',
-      callbacks: {
-        onmessage: (message) => {
-          const content = message.serverContent;
-          if (!content) return;
-          for (const part of content.modelTurn?.parts || []) {
-            if (part.inlineData?.data) {
-              clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
-            }
-          }
-          if (content.outputTranscription?.text) {
-            clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
-          }
-          if (content.interrupted) {
-            clientWs.send(JSON.stringify({ type: 'interrupted' }));
-          }
-          if (content.inputTranscription?.text?.trim()) {
-            const sentiment = analyzeSentiment(content.inputTranscription.text);
-            clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
-          }
-        },
-        onclose: () => {
-          clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor connection closed.' }));
-        },
-        onerror: (error) => {
-          console.error('[VoiceWS] Session error:', error);
-          clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
-        },
-      },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-        systemInstruction,
-        outputAudioTranscription: {},
-        inputAudioTranscription: {},
-      },
-    });
-
+    await establishGeminiSession();
     clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor is ready! Ask your academic questions.' }));
   } catch (err) {
     console.error('[VoiceWS] Failed:', err.message);

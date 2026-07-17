@@ -276,6 +276,7 @@ export default function PersonalizedBot() {
               'general-tutor': '/vedika-ai/general-tutor',
               'coding-tutor': '/vedika-ai/coding-tutor',
               'code-puzzle': '/vedika-ai/code-puzzle',
+              'viva-interview': '/viva-interview',
               progress: '/progress',
               'physics-lab': '/vedika-labs/physics',
               'chemistry-lab': '/vedika-labs/chemistry',
@@ -377,20 +378,21 @@ export default function PersonalizedBot() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'action' && msg.name === 'navigateToPage') {
             const page = msg.args?.page;
-             const routeNames = {
-               dashboard: '/',
-               courses: '/courses',
-               quizzes: '/courses?tab=quizzes',
-               assignments: '/courses?tab=assignments',
-               resources: '/courses?tab=resources',
-               'general-tutor': '/vedika-ai/general-tutor',
-               'coding-tutor': '/vedika-ai/coding-tutor',
-               'code-puzzle': '/vedika-ai/code-puzzle',
-               progress: '/progress',
-               'physics-lab': '/vedika-labs/physics',
-               'chemistry-lab': '/vedika-labs/chemistry',
-               'biology-lab': '/vedika-labs/biology',
-             };
+              const routeNames = {
+                dashboard: '/',
+                courses: '/courses',
+                quizzes: '/courses?tab=quizzes',
+                assignments: '/courses?tab=assignments',
+                resources: '/courses?tab=resources',
+                'general-tutor': '/vedika-ai/general-tutor',
+                'coding-tutor': '/vedika-ai/coding-tutor',
+                'code-puzzle': '/vedika-ai/code-puzzle',
+                'viva-interview': '/viva-interview',
+                progress: '/progress',
+                'physics-lab': '/vedika-labs/physics',
+                'chemistry-lab': '/vedika-labs/chemistry',
+                'biology-lab': '/vedika-labs/biology',
+              };
              const targetRoute = routeNames[page];
             if (targetRoute) {
               setNavTargetName(page);
@@ -454,7 +456,6 @@ export default function PersonalizedBot() {
         } catch (e) {}
       }
 
-      
       // Bot Session ID
       let botSession = localStorage.getItem('vyomanta_bot_session');
       if (!botSession) {
@@ -478,6 +479,38 @@ export default function PersonalizedBot() {
         }
       ]);
     }
+  }, []);
+
+  // Listen for storage events (e.g. when age is verified/updated) and trigger mascot onboard sync
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const storedUser = localStorage.getItem('frappe_user');
+      const storedAge = localStorage.getItem('lms-user-age');
+      if (storedUser && storedAge) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          let ageNum = 16;
+          if (storedAge === '6-10') ageNum = 8;
+          else if (storedAge === '11-14') ageNum = 12;
+          else if (storedAge === '15+') ageNum = 16;
+          
+          import('@/lib/vedikaClient').then(({ vedika }) => {
+            vedika.setUser(parsed.email || '');
+            vedika.onboard(parsed.name || parsed.username || 'Student', ageNum);
+          }).catch(() => {});
+        } catch (e) {}
+      }
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleStorageChange);
+      handleStorageChange();
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', handleStorageChange);
+      }
+    };
   }, []);
 
   // Scroll to bottom on new message
@@ -779,6 +812,7 @@ export default function PersonalizedBot() {
           '/general-tutor': 'AI General Tutor',
           '/coding-tutor': 'AI Coding Tutor',
           '/code-puzzle': 'Code Puzzles',
+          '/viva-interview': 'Viva & Interview',
           '/jobs': 'Jobs Arena',
           '/progress': 'Progress Dashboard'
         };
@@ -796,6 +830,23 @@ export default function PersonalizedBot() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDragStart = () => {
+    isDragging.current = true;
+    setIsDraggingState(true);
+  };
+
+  const handleDragEnd = () => {
+    setTimeout(() => {
+      isDragging.current = false;
+      setIsDraggingState(false);
+    }, 100);
+  };
+
+  const handleBotClick = () => {
+    if (isDragging.current) return;
+    setIsOpen(!isOpen);
   };
 
   const handleQuickAction = (actionType) => {
@@ -871,6 +922,7 @@ export default function PersonalizedBot() {
     { id: '/general-tutor', Icon: Brain,         label: 'Ask AI Tutor'  },
     { id: '/coding-tutor',  Icon: Code2,         label: 'Code AI Tutor' },
     { id: '/code-puzzle',   Icon: Zap,           label: 'Code Puzzle'   },
+    { id: '/viva-interview', Icon: MessageSquare, label: 'Viva / Interview' },
     { id: '/jobs',          Icon: Briefcase,     label: 'Jobs'          },
     { id: '/progress',      Icon: BarChart3,     label: 'Progress'      },
     { id: '/labs/physics',   Icon: Atom,         label: 'Physics Lab'   },

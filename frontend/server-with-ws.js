@@ -19,6 +19,14 @@ const GEMINI_KEYS = [
   process.env.GEMINI_API_KEY_4
 ].filter(Boolean);
 
+const globalKeyCooldowns = new Map();
+const COOLDOWN_MS = 60000;
+function markKeyFailed(key) {
+  if (key) {
+    globalKeyCooldowns.set(key, Date.now() + COOLDOWN_MS);
+  }
+}
+
 let connectionCount = 0;
 
 function getGeminiClient() {
@@ -214,112 +222,181 @@ nextApp.prepare().then(() => {
     if (memoryCtx) systemInstruction += memoryCtx;
 
     let geminiSession = null;
-    try {
-      clientWs.send(JSON.stringify({ type: 'status', message: 'Establishing low-latency connection to Gemini...' }));
-      const ai = getGeminiClient();
-      geminiSession = await ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
-        callbacks: {
-          onmessage: (message) => {
-            const content = message.serverContent;
-            
-            // Handle Tool Calls
-            const toolCall = message.toolCall || (content && content.toolCall);
-            if (toolCall && toolCall.functionCalls) {
-              for (const call of toolCall.functionCalls) {
-                console.log(`[WS] Gemini requested tool call: ${call.name} with args:`, call.args);
-                clientWs.send(JSON.stringify({ 
-                  type: 'action', 
-                  name: call.name, 
-                  args: call.args 
-                }));
+    const failedKeys = new Set();
+    let reconnectCount = 0;
+    const MAX_RECONNECTS = 5;
 
-                // Forward tool call to the desktop companion client as well
-                let desktopWs = desktopClients.get(userId);
-                if (!desktopWs && desktopClients.size > 0) {
-                  desktopWs = desktopClients.values().next().value;
-                }
-                if (desktopWs && desktopWs.readyState === 1) {
-                  desktopWs.send(JSON.stringify({
-                    type: 'action',
-                    name: call.name,
-                    args: call.args
-                  }));
-                }
+    async function establishGeminiSession() {
+      let success = false;
+      let lastErr = null;
 
-                // Respond immediately back to the session
-                try {
-                  geminiSession.send({
-                    toolResponse: {
-                      functionResponses: [
-                        {
-                          response: { output: { success: true } },
-                          id: call.id
-                        }
-                      ]
+      while (!success) {
+        const now = Date.now();
+        const availableKeys = GEMINI_KEYS.filter(k => {
+          if (failedKeys.has(k)) return false;
+          const cooldownEnd = globalKeyCooldowns.get(k);
+          if (cooldownEnd && now < cooldownEnd) return false;
+          return true;
+        });
+
+        let keysToTry = availableKeys;
+        if (keysToTry.length === 0) {
+          // Fallback: ignore global cooldown if all are cooled down, but still exclude local connection failures
+          keysToTry = GEMINI_KEYS.filter(k => !failedKeys.has(k));
+        }
+
+        if (keysToTry.length === 0) {
+          throw new Error(lastErr ? `All API keys failed. Last error: ${lastErr.message}` : 'All configured Gemini API keys have failed.');
+        }
+
+        const apiKey = keysToTry[connectionCount % keysToTry.length];
+        connectionCount++;
+        console.log(`[WS] Connecting to Gemini Live with key index ${GEMINI_KEYS.indexOf(apiKey)}`);
+
+        try {
+          const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+          geminiSession = await ai.live.connect({
+            model: 'gemini-3.1-flash-live-preview',
+            callbacks: {
+              onmessage: (message) => {
+                const content = message.serverContent;
+                
+                // Handle Tool Calls
+                const toolCall = message.toolCall || (content && content.toolCall);
+                if (toolCall && toolCall.functionCalls) {
+                  for (const call of toolCall.functionCalls) {
+                    console.log(`[WS] Gemini requested tool call: ${call.name} with args:`, call.args);
+                    clientWs.send(JSON.stringify({ 
+                      type: 'action', 
+                      name: call.name, 
+                      args: call.args 
+                    }));
+
+                    // Forward tool call to the desktop companion client as well
+                    let desktopWs = desktopClients.get(userId);
+                    if (!desktopWs && desktopClients.size > 0) {
+                      desktopWs = desktopClients.values().next().value;
                     }
-                  });
-                } catch (e) {
-                  console.error('[WS] Failed to send tool response:', e);
-                }
-              }
-            }
+                    if (desktopWs && desktopWs.readyState === 1) {
+                      desktopWs.send(JSON.stringify({
+                        type: 'action',
+                        name: call.name,
+                        args: call.args
+                      }));
+                    }
 
-            if (!content) return;
-            for (const part of content.modelTurn?.parts || []) {
-              if (part.inlineData?.data) {
-                clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
-              }
-            }
-            if (content.outputTranscription?.text) {
-              clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
-            }
-            if (content.interrupted) {
-              clientWs.send(JSON.stringify({ type: 'interrupted' }));
-            }
-            if (content.inputTranscription?.text?.trim()) {
-              const sentiment = analyzeSentiment(content.inputTranscription.text);
-              clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
-            }
-          },
-          onclose: () => {
-            clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor connection closed.' }));
-          },
-          onerror: (error) => {
-            console.error('[WS] Session error:', error);
-            clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
-          },
-        },
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-          systemInstruction,
-          outputAudioTranscription: {},
-          inputAudioTranscription: {},
-          tools: [
-            {
-              functionDeclarations: [
-                {
-                  name: 'navigateToPage',
-                  description: 'Navigate the student to a specific page or workspace in the LMS app.',
-                  parameters: {
-                    type: 'OBJECT',
-                    properties: {
-                      page: {
-                        type: 'STRING',
-                        description: 'The target page name, e.g. dashboard, courses, general-tutor, coding-tutor, progress, code-puzzle, quizzes, resources',
-                        enum: ['dashboard', 'courses', 'general-tutor', 'coding-tutor', 'progress', 'code-puzzle', 'quizzes', 'resources']
-                      }
-                    },
-                    required: ['page']
+                    // Respond immediately back to the session
+                    try {
+                      geminiSession.send({
+                        toolResponse: {
+                          functionResponses: [
+                            {
+                              response: { output: { success: true } },
+                              id: call.id
+                            }
+                          ]
+                        }
+                      });
+                    } catch (e) {
+                      console.error('[WS] Failed to send tool response:', e);
+                    }
                   }
                 }
-              ]
-            }
-          ]
-        },
-      });
 
+                if (!content) return;
+                for (const part of content.modelTurn?.parts || []) {
+                  if (part.inlineData?.data) {
+                    clientWs.send(JSON.stringify({ type: 'audio', data: part.inlineData.data }));
+                  }
+                }
+                if (content.outputTranscription?.text) {
+                  clientWs.send(JSON.stringify({ type: 'agent-transcription', text: content.outputTranscription.text }));
+                }
+                if (content.interrupted) {
+                  clientWs.send(JSON.stringify({ type: 'interrupted' }));
+                }
+                if (content.inputTranscription?.text?.trim()) {
+                  const sentiment = analyzeSentiment(content.inputTranscription.text);
+                  clientWs.send(JSON.stringify({ type: 'user-transcription', text: content.inputTranscription.text, sentiment }));
+                }
+              },
+              onclose: () => {
+                clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor connection closed.' }));
+              },
+              onerror: async (error) => {
+                console.error('[WS] Session error:', error);
+                const errStr = String(error).toLowerCase();
+                if (errStr.includes('429') || errStr.includes('quota') || errStr.includes('limit') || errStr.includes('resource_exhausted') || errStr.includes('403') || errStr.includes('401')) {
+                  console.warn('[WS] Rate limit or authorization hit. Attempting to rotate key and reconnect...');
+                  failedKeys.add(apiKey);
+                  markKeyFailed(apiKey);
+
+                  reconnectCount++;
+                  if (reconnectCount > MAX_RECONNECTS) {
+                    console.error('[WS] Max reconnect attempts exceeded.');
+                    clientWs.send(JSON.stringify({ type: 'error', message: 'Tutor session connection lost due to persistent rate limits.' }));
+                    clientWs.close();
+                    return;
+                  }
+
+                  try {
+                    if (geminiSession) {
+                      try { geminiSession.close(); } catch {}
+                    }
+                    clientWs.send(JSON.stringify({ type: 'status', message: 'Re-establishing connection with a different key...' }));
+                    await establishGeminiSession();
+                  } catch (reconnectErr) {
+                    console.error('[WS] Failed to reconnect after key rotation:', reconnectErr);
+                    clientWs.send(JSON.stringify({ type: 'error', message: `Tutor setup failed: ${reconnectErr.message}` }));
+                    clientWs.close();
+                  }
+                } else {
+                  clientWs.send(JSON.stringify({ type: 'error', message: 'Session error occurred.' }));
+                }
+              },
+            },
+            config: {
+              responseModalities: [Modality.AUDIO],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
+              systemInstruction,
+              outputAudioTranscription: {},
+              inputAudioTranscription: {},
+              tools: [
+                {
+                  functionDeclarations: [
+                    {
+                      name: 'navigateToPage',
+                      description: 'Navigate the student to a specific page or workspace in the LMS app.',
+                      parameters: {
+                        type: 'OBJECT',
+                        properties: {
+                          page: {
+                            type: 'STRING',
+                            description: 'The target page name, e.g. dashboard, courses, general-tutor, coding-tutor, progress, code-puzzle, quizzes, resources',
+                            enum: ['dashboard', 'courses', 'general-tutor', 'coding-tutor', 'progress', 'code-puzzle', 'quizzes', 'resources']
+                          }
+                        },
+                        required: ['page']
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+          });
+          success = true;
+        } catch (err) {
+          console.error(`[WS] Connection attempt failed with key index ${GEMINI_KEYS.indexOf(apiKey)}:`, err.message);
+          failedKeys.add(apiKey);
+          markKeyFailed(apiKey);
+          lastErr = err;
+        }
+      }
+    }
+
+    try {
+      clientWs.send(JSON.stringify({ type: 'status', message: 'Establishing low-latency connection to Gemini...' }));
+      await establishGeminiSession();
       console.log('[WS] Connected with Gemini Live API');
       clientWs.send(JSON.stringify({ type: 'status', message: 'Tutor is ready! Ask your academic questions.' }));
     } catch (err) {

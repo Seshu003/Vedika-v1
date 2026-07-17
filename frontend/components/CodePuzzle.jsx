@@ -485,6 +485,19 @@ export default function CodePuzzle() {
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.write('\n\x1b[90m--- Run finished ---\x1b[0m\n');
     }
+
+    const stored = localStorage.getItem('frappe_user');
+    let email = '';
+    if (stored) {
+      try { email = JSON.parse(stored).email || ''; } catch {}
+    }
+    import('@/lib/vedikaClient').then(({ vedika }) => {
+      vedika.setUser(email);
+      vedika.sendActivity('compile_code', '/code-puzzle', {
+        language: 'python',
+        codeSnippet: code
+      });
+    }).catch(() => {});
   };
 
   const onError = (msg) => {
@@ -492,6 +505,20 @@ export default function CodePuzzle() {
     if (terminalInstanceRef.current) {
       terminalInstanceRef.current.write(`\x1b[31mError: ${msg}\x1b[0m\n`);
     }
+
+    const stored = localStorage.getItem('frappe_user');
+    let email = '';
+    if (stored) {
+      try { email = JSON.parse(stored).email || ''; } catch {}
+    }
+    import('@/lib/vedikaClient').then(({ vedika }) => {
+      vedika.setUser(email);
+      vedika.sendActivity('compile_code', '/code-puzzle', {
+        errorMessage: msg,
+        language: 'python',
+        codeSnippet: code
+      });
+    }).catch(() => {});
   };
 
   const onTraceResult = (trace) => {
