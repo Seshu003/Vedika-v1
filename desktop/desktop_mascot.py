@@ -260,9 +260,9 @@ class DesktopMascot(QWidget):
         # Monitor page loading status
         self.web_view.loadFinished.connect(self.on_load_finished)
 
-        # Load transparent HTML page containing Three.js mascot
-        local_url = f"http://127.0.0.1:{self.http_server.port}/index.html"
-        print(f"[Mascot] Loading WebGL mascot from: {local_url}")
+        # Load transparent HTML page containing 2D mascot
+        local_url = f"http://127.0.0.1:{self.http_server.port}/index_2d.html"
+        print(f"[Mascot] Loading 2D mascot from: {local_url}")
         self.web_view.load(QUrl(local_url))
 
         # Connect WebSocket to Next.js server

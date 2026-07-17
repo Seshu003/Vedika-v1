@@ -9,6 +9,7 @@ import {
   Home, BookOpen, Award, FileText, FolderOpen, Brain, Code2, Briefcase, BarChart3, Atom, FlaskConical, Dna
 } from 'lucide-react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import Mascot2D from './Mascot2D';
 import { 
   getStudentEnrollments, 
   getQuizSubmissions, 
@@ -234,6 +235,104 @@ export default function PersonalizedBot() {
   };
 
   const wsRef = useRef(null);
+  const localWsRef = useRef(null);
+  const [isDesktopLocalConnected, setIsDesktopLocalConnected] = useState(false);
+
+  // Maintain real-time sync with local desktop mascot companion directly on port 7001
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let socket = null;
+    let reconnectTimeout = null;
+
+    const connectLocalWs = () => {
+      console.log('[WebSync] Connecting to local desktop mascot at ws://localhost:7001...');
+      socket = new WebSocket('ws://localhost:7001');
+      localWsRef.current = socket;
+
+      socket.onopen = () => {
+        console.log('[WebSync] Connected to local desktop mascot directly');
+        setIsDesktopLocalConnected(true);
+        // Sync the current tab with the local desktop companion upon connection
+        const cleanTab = pathname.replace(/\//g, '') || 'dashboard';
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ event: 'tab_change', tab: cleanTab }));
+        }
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[WebSync] Received local companion event:', data);
+
+          if (data.event === 'navigate') {
+            const page = data.page;
+            const routeNames = {
+              dashboard: '/',
+              courses: '/courses',
+              quizzes: '/courses?tab=quizzes',
+              assignments: '/courses?tab=assignments',
+              resources: '/courses?tab=resources',
+              'general-tutor': '/vedika-ai/general-tutor',
+              'coding-tutor': '/vedika-ai/coding-tutor',
+              'code-puzzle': '/vedika-ai/code-puzzle',
+              progress: '/progress',
+              'physics-lab': '/vedika-labs/physics',
+              'chemistry-lab': '/vedika-labs/chemistry',
+              'biology-lab': '/vedika-labs/biology',
+            };
+            const targetRoute = routeNames[page];
+            if (targetRoute) {
+              setNavTargetName(page);
+              triggerSpeech(`Navigating to ${page}...`);
+              triggerSpinAndNavigate(targetRoute);
+            }
+          } else if (data.event === 'openAITutor') {
+            const tab = data.tab;
+            const routeNames = {
+              'general-tutor': '/vedika-ai/general-tutor',
+              'coding-tutor': '/vedika-ai/coding-tutor',
+              'code-puzzle': '/vedika-ai/code-puzzle',
+            };
+            const targetRoute = routeNames[tab];
+            if (targetRoute) {
+              setNavTargetName(tab);
+              triggerSpeech(`Navigating to ${tab}...`);
+              triggerSpinAndNavigate(targetRoute);
+            }
+          } else if (data.event === 'speech') {
+            triggerSpeech(data.text);
+          } else if (data.event === 'stateChange') {
+            setCurrentAction(data.state);
+          } else if (data.event === 'sleeping') {
+            setCurrentAction('sleep');
+          }
+        } catch (e) {
+          console.error('[WebSync] Local msg parse error:', e);
+        }
+      };
+
+      socket.onclose = () => {
+        console.log('[WebSync] Local desktop companion disconnected. Retrying in 5s...');
+        setIsDesktopLocalConnected(false);
+        reconnectTimeout = setTimeout(connectLocalWs, 5000);
+      };
+
+      socket.onerror = (err) => {
+        // Silent error: do not spam console if mascot is not running locally
+      };
+    };
+
+    connectLocalWs();
+
+    return () => {
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+    };
+  }, [pathname]);
 
   // Maintain real-time sync with desktop companion
   useEffect(() => {
@@ -333,9 +432,12 @@ export default function PersonalizedBot() {
 
   // Report path/tab changes on route navigation
   useEffect(() => {
+    const cleanTab = pathname.replace(/\//g, '') || 'dashboard';
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const cleanTab = pathname.replace(/\//g, '') || 'dashboard';
       wsRef.current.send(JSON.stringify({ type: 'tab_change', tab: cleanTab }));
+    }
+    if (localWsRef.current && localWsRef.current.readyState === WebSocket.OPEN) {
+      localWsRef.current.send(JSON.stringify({ event: 'tab_change', tab: cleanTab }));
     }
   }, [pathname]);
 
@@ -779,24 +881,338 @@ export default function PersonalizedBot() {
   const radius = 130; // circular layout radius
   const isDraggingMascot = useRef(false);
 
-  const handleDragStart = () => {
-    isDraggingMascot.current = true;
-    setIsDraggingState(true);
-  };
 
-  const handleDragEnd = () => {
-    setIsDraggingState(false);
-    setTimeout(() => {
-      isDraggingMascot.current = false;
-    }, 100);
-  };
+  return (
+    <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-outfit), sans-serif' }}>
+      
+      {/* Chat Panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 50 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 50 }}
+            style={{
+              position: 'absolute',
+              bottom: 110,
+              right: 0,
+              width: 330,
+              height: 480,
+              background: 'rgba(15, 23, 42, 0.95)',
+              border: '1.5px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: 16,
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.1)',
+              backdropFilter: 'blur(12px)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              zIndex: 10002
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '12px 16px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(30, 41, 59, 0.5)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Sparkles size={16} color="#38BDF8" />
+                <div>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, margin: 0, color: '#F8FAFC' }}>VEDIKA AI</h3>
+                  <span style={{ fontSize: 10, color: '#38BDF8', fontWeight: 600 }}>Socratic Companion</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer', padding: 4 }}
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-  const handleBotClick = () => {
-    if (isDraggingMascot.current) return;
-    if (isDesktopConnected) return;
-    setIsOpen(!isOpen);
-  };
+            {/* Messages */}
+            <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {messages.map((m, i) => (
+                <div key={i} style={{
+                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  background: m.role === 'user' ? '#38BDF8' : 'rgba(255, 255, 255, 0.05)',
+                  color: m.role === 'user' ? '#0B0F19' : '#E2E8F0',
+                  borderRadius: 12,
+                  padding: '8px 12px',
+                  fontSize: 12.5,
+                  lineHeight: 1.4,
+                  fontWeight: m.role === 'user' ? 600 : 500
+                }}>
+                  {m.content}
+                </div>
+              ))}
+              {isLoading && (
+                <div style={{ alignSelf: 'flex-start', display: 'flex', gap: 4, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 12 }}>
+                  <Loader2 size={14} className="animate-spin" color="#38BDF8" />
+                  <span style={{ fontSize: 11.5, color: '#94A3B8' }}>Thinking...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
 
-  return null;
+            {/* Quick Actions */}
+            {!isLoading && (
+              <div style={{ display: 'flex', gap: 6, padding: '0 12px 10px', overflowX: 'auto', flexShrink: 0 }}>
+                <button 
+                  onClick={() => handleQuickAction('explain')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#38BDF8'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <Code size={10} />
+                  Explain Code
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('debug')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#F59E0B'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <AlertCircle size={10} />
+                  Help Debug
+                </button>
+                <button 
+                  onClick={() => handleQuickAction('hint')}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: 20,
+                    padding: '4px 10px',
+                    fontSize: 10,
+                    color: '#8892B0',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.color = '#10B981'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#8892B0'}
+                >
+                  <HelpCircle size={10} />
+                  Get Hint
+                </button>
+              </div>
+            )}
+
+            {/* Input field */}
+            <div style={{
+              padding: 12,
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              background: 'rgba(15, 23, 42, 0.6)',
+              display: 'flex',
+              gap: 8
+            }}>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Ask your tutor companion..."
+                disabled={isLoading}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  color: '#F8FAFC',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={isLoading || !input.trim()}
+                style={{
+                  background: input.trim() ? '#38BDF8' : 'rgba(255,255,255,0.05)',
+                  color: input.trim() ? '#0B0F19' : '#64748B',
+                  border: 'none',
+                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: (isLoading || !input.trim()) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s'
+                }}
+              >
+                <Send size={13} fill="currentColor" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating speech bubble */}
+      <AnimatePresence>
+        {showSpeech && speechText && !isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            style={{
+              position: 'absolute',
+              bottom: 120,
+              right: 10,
+              background: 'rgba(15, 23, 42, 0.9)',
+              border: '1.5px solid rgba(56, 189, 248, 0.5)',
+              borderRadius: 14,
+              color: '#f1f5f9',
+              padding: '10px 14px',
+              fontSize: 12,
+              fontWeight: 500,
+              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+              backdropFilter: 'blur(10px)',
+              maxWidth: 220,
+              minWidth: 150,
+              zIndex: 10000,
+              pointerEvents: 'none'
+            }}
+          >
+            {speechText}
+            <div style={{
+              position: 'absolute',
+              bottom: -8,
+              right: 35,
+              width: 0,
+              height: 0,
+              borderLeft: '8px solid transparent',
+              borderRight: '8px solid transparent',
+              borderTop: '8px solid rgba(15, 23, 42, 0.9)'
+            }} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Circular portal menu */}
+      <AnimatePresence>
+        {isNavigating && (
+          <div style={{
+            position: 'absolute',
+            bottom: -30,
+            right: -30,
+            width: 160,
+            height: 160,
+            pointerEvents: 'none',
+            zIndex: 9998
+          }}>
+            {MENU_ITEMS.map((item, idx) => {
+              const angle = (idx * 2 * Math.PI) / MENU_ITEMS.length;
+              const x = Math.cos(angle) * radius;
+              const y = Math.sin(angle) * radius;
+              const isHighlighted = idx === spinningHighlightIndex;
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    left: `calc(50% + ${x}px)`,
+                    top: `calc(50% + ${y}px)`,
+                    transform: 'translate(-50%, -50%)',
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    background: isHighlighted ? 'rgba(56, 189, 248, 0.95)' : 'rgba(15, 23, 42, 0.85)',
+                    border: isHighlighted ? '2.5px solid #ffffff' : '1.5px solid rgba(56, 189, 248, 0.5)',
+                    boxShadow: isHighlighted ? '0 0 20px rgba(56, 189, 248, 0.8)' : '0 4px 10px rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: isHighlighted ? '#0b0f19' : '#38bdf8',
+                    pointerEvents: 'auto',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={() => setHoveredIndex(idx)}
+                  onMouseLeave={() => setHoveredIndex(null)}
+                  onClick={() => router.push(item.id)}
+                >
+                  <item.Icon size={16} />
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Draggable mascot button */}
+      <motion.div
+        drag
+        dragConstraints={dragConstraints}
+        dragElastic={0.1}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={handleBotClick}
+        style={{
+          width: 100,
+          height: 100,
+          borderRadius: '50%',
+          background: 'rgba(15, 23, 42, 0.55)',
+          border: '1.5px solid rgba(56, 189, 248, 0.35)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 15px rgba(56, 189, 248, 0.15)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'grab',
+          position: 'absolute',
+          bottom: 0,
+          right: 0,
+          zIndex: 10001,
+          pointerEvents: 'auto'
+        }}
+        whileHover={{ scale: 1.06, borderColor: 'rgba(56, 189, 248, 0.6)' }}
+        whileTap={{ scale: 0.96, cursor: 'grabbing' }}
+      >
+        <Mascot2D
+          action={isDraggingState ? 'flying' : currentAction}
+          isDragging={isDraggingState}
+          isError={activeCtx?.error ? true : false}
+          isThinking={isLoading}
+        />
+      </motion.div>
+    </div>
+  );
 }
 

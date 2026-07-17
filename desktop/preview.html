@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GLB Dual Preview</title>
+    <style>
+        body { margin: 0; background-color: #222; }
+        canvas { width: 100%; height: 100%; display: block; }
+    </style>
+    <script src="libs/three.min.js"></script>
+    <script src="libs/GLTFLoader.js"></script>
+</head>
+<body>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(1.2, 0.2, 2.0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(3, 4, 3);
+        scene.add(dirLight);
+
+        const loader = new THREE.GLTFLoader();
+
+        let robotMesh, originalGeometry, robotMaterial;
+        let torsoGroup, headGroup;
+        let leftArmGroup, rightArmGroup, leftLegGroup, rightLegGroup;
+        let laptop;
+        let modelLoaded = false;
+
+        // Load robot
+        loader.load('models/robot.glb', function (gltf) {
+            const rootModel = gltf.scene;
+
+            // Find the single mesh in the GLB
+            rootModel.traverse((child) => {
+                if (child.isMesh && !robotMesh) {
+                    robotMesh = child;
+                }
+            });
+
+            if (!robotMesh) {
+                console.error("No mesh found in robot.glb!");
+                return;
+            }
+
+            originalGeometry = robotMesh.geometry;
+            robotMaterial = robotMesh.material;
+
+            const indices = originalGeometry.index.array;
+            const positionAttr = originalGeometry.attributes.position;
+
+            // Segment geometries
+            const parts = {
+                head: [], leftArm: [], rightArm: [], leftLeg: [], rightLeg: [], torso: []
+            };
+
+            for (let i = 0; i < indices.length; i += 3) {
+                const iA = indices[i];
+                const iB = indices[i + 1];
+                const iC = indices[i + 2];
+
+                const ax = positionAttr.getX(iA), ay = positionAttr.getY(iA), az = positionAttr.getZ(iA);
+                const bx = positionAttr.getX(iB), by = positionAttr.getY(iB), bz = positionAttr.getZ(iB);
+                const cx = positionAttr.getX(iC), cy = positionAttr.getY(iC), cz = positionAttr.getZ(iC);
+
+                const xc = (ax + bx + cx) / 3.0;
+                const yc = (ay + by + cy) / 3.0;
+                const zc = (az + bz + cz) / 3.0;
+
+                if (yc > 0.25) {
+                    parts.head.push(iA, iB, iC);
+                } else if (yc > 0.15) {
+                    if (xc < -0.22) parts.leftArm.push(iA, iB, iC);
+                    else if (xc > 0.22) parts.rightArm.push(iA, iB, iC);
+                    else parts.head.push(iA, iB, iC);
+                } else if (yc < -0.35) {
+                    if (xc < 0) parts.leftLeg.push(iA, iB, iC);
+                    else parts.rightLeg.push(iA, iB, iC);
+                } else {
+                    if (xc < -0.22) parts.leftArm.push(iA, iB, iC);
+                    else if (xc > 0.22) parts.rightArm.push(iA, iB, iC);
+                    else parts.torso.push(iA, iB, iC);
+                }
+            }
+
+            const partGeometries = {};
+            const createPartGeometry = (idxArray) => {
+                if (idxArray.length === 0) return null;
+                const geom = originalGeometry.clone();
+                geom.setIndex(new THREE.BufferAttribute(new Uint32Array(idxArray), 1));
+                return geom;
+            };
+
+            for (let p in parts) {
+                partGeometries[p] = createPartGeometry(parts[p]);
+            }
+
+            // Assemble character
+            torsoGroup = new THREE.Group();
+            scene.add(torsoGroup);
+
+            if (partGeometries.torso) {
+                const m = new THREE.Mesh(partGeometries.torso, robotMaterial);
+                torsoGroup.add(m);
+            }
+
+            headGroup = new THREE.Group();
+            headGroup.position.set(0, 0.4, 0);
+            torsoGroup.add(headGroup);
+
+            if (partGeometries.head) {
+                const m = new THREE.Mesh(partGeometries.head, robotMaterial);
+                m.position.set(0, -0.4, 0);
+                headGroup.add(m);
+            }
+
+            leftArmGroup = new THREE.Group();
+            leftArmGroup.position.set(-0.28, 0.2, 0);
+            torsoGroup.add(leftArmGroup);
+            if (partGeometries.leftArm) {
+                const m = new THREE.Mesh(partGeometries.leftArm, robotMaterial);
+                m.position.set(0.28, -0.2, 0);
+                leftArmGroup.add(m);
+            }
+
+            rightArmGroup = new THREE.Group();
+            rightArmGroup.position.set(0.28, 0.2, 0);
+            torsoGroup.add(rightArmGroup);
+            if (partGeometries.rightArm) {
+                const m = new THREE.Mesh(partGeometries.rightArm, robotMaterial);
+                m.position.set(-0.28, -0.2, 0);
+                rightArmGroup.add(m);
+            }
+
+            leftLegGroup = new THREE.Group();
+            leftLegGroup.position.set(-0.16, -0.35, 0);
+            torsoGroup.add(leftLegGroup);
+            if (partGeometries.leftLeg) {
+                const m = new THREE.Mesh(partGeometries.leftLeg, robotMaterial);
+                m.position.set(0.16, 0.35, 0);
+                leftLegGroup.add(m);
+            }
+
+            rightLegGroup = new THREE.Group();
+            rightLegGroup.position.set(0.16, -0.35, 0);
+            torsoGroup.add(rightLegGroup);
+            if (partGeometries.rightLeg) {
+                const m = new THREE.Mesh(partGeometries.rightLeg, robotMaterial);
+                m.position.set(-0.16, 0.35, 0);
+                rightLegGroup.add(m);
+            }
+
+            torsoGroup.position.set(0, -0.2, 0);
+
+            // Load laptop inside the same callback so we can add it to torsoGroup
+            loader.load('models/Vedika-laptop.glb', function (laptopGltf) {
+                laptop = laptopGltf.scene;
+                laptop.scale.set(0.22, 0.22, 0.22);
+                
+                // Position the laptop lower (closer to lap/hands level) and rotated 180 degrees (Math.PI)
+                laptop.position.set(0, -0.22, 0.40);
+                laptop.rotation.set(0.08, Math.PI, 0); // rotated around Y so screen faces robot
+                torsoGroup.add(laptop);
+                
+                modelLoaded = true;
+                camera.lookAt(0, -0.15, 0.2);
+            });
+        });
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (modelLoaded) {
+                const t = clock.getElapsedTime();
+
+                // Breathing/sway
+                torsoGroup.position.y = -0.2 + Math.sin(t * 1.5) * 0.01 + Math.sin(t * 28) * 0.002;
+                torsoGroup.rotation.x = 0.12 + Math.sin(t * 1.5) * 0.01;
+                
+                headGroup.rotation.x = 0.42 + Math.sin(t * 1.2) * 0.02;
+                headGroup.rotation.y = Math.sin(t * 0.8) * 0.06;
+
+                // Make arms reach forward and inward to type on the keyboard
+                // Left arm:
+                leftArmGroup.rotation.x = -1.0 + Math.sin(t * 30) * 0.1;
+                leftArmGroup.rotation.y = 0.25 + Math.cos(t * 28) * 0.08;
+                leftArmGroup.rotation.z = 0.35 + Math.sin(t * 32) * 0.06;
+
+                // Right arm:
+                rightArmGroup.rotation.x = -1.0 + Math.cos(t * 30) * 0.1;
+                rightArmGroup.rotation.y = -0.25 + Math.sin(t * 28) * 0.08;
+                rightArmGroup.rotation.z = -0.35 + Math.cos(t * 32) * 0.06;
+
+                // Laptop subtle floating
+                if (laptop) {
+                    laptop.position.y = -0.22 + Math.sin(t * 2.5) * 0.01;
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
