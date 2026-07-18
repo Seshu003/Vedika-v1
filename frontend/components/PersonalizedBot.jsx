@@ -934,6 +934,10 @@ export default function PersonalizedBot() {
   const isDraggingMascot = useRef(false);
 
 
+  if (isDesktopLocalConnected || isDesktopConnected) {
+    return null;
+  }
+
   return (
     <div style={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999, fontFamily: 'var(--font-outfit), sans-serif' }}>
       

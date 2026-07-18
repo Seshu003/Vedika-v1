@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const showDemoCredentials = false;
+  const showDemoCredentials = true;
 
   // Clear any existing session on mount and parse query errors
   useEffect(() => {

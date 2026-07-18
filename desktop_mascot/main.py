@@ -110,21 +110,31 @@ def set_current_email(email: str):
 
 def load_env():
     """Load variables from .env file into os.environ if it exists."""
-    # Check current directory or executable bundle directory
     base_dir = os.path.dirname(os.path.abspath(__file__))
     if getattr(sys, 'frozen', False):
         base_dir = sys._MEIPASS
-    env_path = os.path.join(base_dir, ".env")
-    if os.path.exists(env_path):
-        try:
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        os.environ[k.strip()] = v.strip()
-        except Exception:
-            pass
+    
+    # Try multiple paths: base_dir, frontend/.env, parent/.env
+    paths_to_try = [
+        os.path.join(base_dir, ".env"),
+        os.path.join(os.path.dirname(base_dir), "frontend", ".env"),
+        os.path.join(os.path.dirname(base_dir), ".env")
+    ]
+    for env_path in paths_to_try:
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            val = v.strip()
+                            # Strip quotes if present
+                            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                                val = val[1:-1]
+                            os.environ[k.strip()] = val
+            except Exception:
+                pass
 
 def load_config():
     load_env()
@@ -141,6 +151,33 @@ def load_config():
     elif not cfg.get("gemini_api_key"):
         cfg["gemini_api_key"] = ""
     return cfg
+
+def get_gemini_api_keys() -> list[str]:
+    load_env()
+    keys = []
+    
+    # Try CONFIG_FILE first
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                primary = cfg.get("gemini_api_key", "").strip()
+                if primary and primary not in keys:
+                    keys.append(primary)
+        except Exception:
+            pass
+            
+    # Try env variables
+    env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if env_key and env_key not in keys:
+        keys.append(env_key)
+        
+    for i in range(1, 10):
+        ek = os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+        if ek and ek not in keys:
+            keys.append(ek)
+            
+    return keys
 
 def save_config(cfg):
     try:
@@ -494,7 +531,8 @@ class TTSEngine:
         try:
             print("[TTS] Attempting to load offline Piper voice engine...")
             model_path, config_path = ensure_piper_models()
-            from piper.voice import PiperVoice
+            import importlib
+            PiperVoice = importlib.import_module("piper.voice").PiperVoice
             self._piper_voice = PiperVoice.load(model_path)
             print("[TTS] Successfully loaded offline Piper TTS voice model!")
         except Exception as piper_err:
@@ -672,7 +710,8 @@ class VoiceListener(QObject):
             print("[STT] Local faster-whisper is not supported or failed to import on this hardware. Defaulting to Google STT.")
             return
         try:
-            from faster_whisper import WhisperModel
+            import importlib
+            WhisperModel = importlib.import_module("faster_whisper").WhisperModel
             if _whisper_model is None:
                 model_dir = os.path.join(get_data_dir(), "models", "whisper-tiny.en")
                 if os.path.exists(model_dir) and os.listdir(model_dir):
@@ -1301,14 +1340,25 @@ class CompanionRequestHandler(BaseHTTPRequestHandler):
             _ws_broadcaster.broadcast_json("stateChange", state="thinking", userId=email)
 
             system_prompt = build_system_prompt(memory)
-            cfg           = load_config()
-            api_key       = cfg.get("gemini_api_key", "")
+            keys          = get_gemini_api_keys()
             reply         = ""
             mascot_state  = "idle"
             actions       = []
 
-            if api_key:
-                result = call_gemini_direct(system_prompt, message, api_key)
+            result = None
+            if keys:
+                for key in keys:
+                    result = call_gemini_direct(system_prompt, message, key)
+                    if result["type"] != "error":
+                        break
+                    err_msg = result.get("text", "").lower()
+                    if "quota" in err_msg or "429" in err_msg or "exhausted" in err_msg:
+                        print(f"[Gemini] Key {key[:10]}... rate-limited or exhausted. Retrying with next key...")
+                        continue
+                    else:
+                        break
+
+            if result:
                 if handle_gemini_result(result, self._sig):
                     page  = result.get("args", {}).get("page", "dashboard")
                     if page == "ai_tutor":
@@ -1501,6 +1551,7 @@ class MascotView(QWebEngineView):
                     "general-tutor": "https://vyomantha-testing.vercel.app/vedika-ai/general-tutor",
                     "coding-tutor":  "https://vyomantha-testing.vercel.app/vedika-ai/coding-tutor",
                     "code-puzzle":   "https://vyomantha-testing.vercel.app/vedika-ai/code-puzzle",
+                    "viva-interview": "https://vyomantha-testing.vercel.app/viva-interview",
                     "physics-lab":   "https://vyomantha-testing.vercel.app/labs/physics",
                     "chemistry-lab": "https://vyomantha-testing.vercel.app/labs/chemistry",
                     "biology-lab":   "https://vyomantha-testing.vercel.app/labs/biology",
@@ -1886,12 +1937,23 @@ class MascotWindow(QWidget):
     def _voice_chat(self, message: str):
         memory        = load_memory()
         system_prompt = build_system_prompt(memory, voice_mode=True)
-        cfg           = load_config()
-        api_key       = cfg.get("gemini_api_key", "")
+        keys          = get_gemini_api_keys()
         reply         = ""
 
-        if api_key:
-            result = call_gemini_direct(system_prompt, message, api_key, use_tools=True)
+        result = None
+        if keys:
+            for key in keys:
+                result = call_gemini_direct(system_prompt, message, key, use_tools=True)
+                if result["type"] != "error":
+                    break
+                err_msg = result.get("text", "").lower()
+                if "quota" in err_msg or "429" in err_msg or "exhausted" in err_msg:
+                    print(f"[Gemini] Key {key[:10]}... rate-limited or exhausted. Retrying with next key...")
+                    continue
+                else:
+                    break
+
+        if result:
             if result["type"] == "function_call":
                 fn   = result["name"]
                 args = result["args"]

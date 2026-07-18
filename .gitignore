@@ -86,3 +86,5 @@ docs/
 # AI Agent logs & context
 .gemini/
 brain/
+temp-ignore/
+

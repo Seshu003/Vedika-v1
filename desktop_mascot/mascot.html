@@ -615,21 +615,37 @@
             wake:  ["I'm awake! Let's go! 🌟", "You're back! Ready to learn? 🚀"]
         };
 
-        const MENU_ITEMS = [
-            { id: 'dashboard',      label: 'Dashboard',   icon: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>' },
-            { id: 'courses',        label: 'Courses',     icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>' },
-            { id: 'quizzes',        label: 'Quizzes',     icon: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>' },
-            { id: 'assignments',    label: 'Assignments', icon: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>' },
-            { id: 'resources',      label: 'Resources',   icon: '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>' },
-            { id: 'general-tutor',  label: 'Ask AI',      icon: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/>' },
-            { id: 'coding-tutor',   label: 'Code Tutor',  icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>' },
-            { id: 'code-puzzle',    label: 'Code Puzzle', icon: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' },
-            { id: 'jobs',           label: 'Jobs',        icon: '<rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>' },
-            { id: 'progress',       label: 'Progress',    icon: '<line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/>' },
-            { id: 'physics-lab',    label: 'Physics Lab', icon: '<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-9.1-4.5-15.77s-10.33-10.02-12.37-8a1 1 0 0 0-.2.27m0 .2c-2.04 2.03-.02 9.1 4.5 15.77s10.33 10.02 12.37 8a1 1 0 0 0 .2-.27"/><path d="M3.8 20.2c-2.04-2.03-.02-9.1 4.5-15.77s10.33-10.02 12.37-8a1 1 0 0 1 .2.27m0-.2c2.04 2.03.02 9.1-4.5 15.77s-10.33 10.02-12.37 8a1 1 0 0 1-.2-.27"/>' },
-            { id: 'chemistry-lab',  label: 'Chem Lab',    icon: '<path d="M10 2v4c0 1-1 2.2-1.4 2.7L5 14c-.7.7-1 1.7-1 2.6C4 19 6.2 21 9 21h6c2.8 0 5-2 5-4.4 0-1-.3-1.9-1-2.6L15.4 8.7C15 8.2 14 7 14 6V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>' },
-            { id: 'biology-lab',    label: 'Bio Lab',     icon: '<path d="m8 8 8 8"/><path d="M12 2v6"/><path d="M12 16v6"/><path d="M16 8c-2-2-6-2-8 0"/><path d="M16 16c-2 2-6 2-8 0"/><path d="M17.5 4.5c-1-1.5-3-1.5-4 0l-1.5 1.5"/><path d="M6.5 19.5c1 1.5 3 1.5 4 0l1.5-1.5"/><path d="M17.5 19.5c-1 1.5-3 1.5-4 0l-1.5-1.5"/><path d="M6.5 4.5c1-1.5 3-1.5 4 0l1.5 1.5"/>' }
+        const MAIN_MENU = [
+            { id: 'dashboard',      label: 'Dashboard',     icon: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>' },
+            { id: 'courses_group',   label: 'Courses',       icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>', hasSub: true },
+            { id: 'vedika_group',    label: 'Vedika AI',     icon: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/>', hasSub: true },
+            { id: 'jobs',           label: 'Jobs',          icon: '<rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>' },
+            { id: 'progress',       label: 'Progress',      icon: '<line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/>' },
+            { id: 'labs_group',     label: 'Vedika Labs',   icon: '<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-9.1-4.5-15.77s-10.33-10.02-12.37-8a1 1 0 0 0-.2.27m0 .2c-2.04 2.03-.02 9.1 4.5 15.77s10.33 10.02 12.37 8a1 1 0 0 0 .2-.27"/><path d="M3.8 20.2c-2.04-2.03-.02-9.1 4.5-15.77s10.33-10.02 12.37-8a1 1 0 1 1 .2.27m0-.2c2.04 2.03.02 9.1-4.5 15.77s-10.33 10.02-12.37 8a1 1 0 1 1-.2-.27"/>', hasSub: true }
         ];
+
+        const SUB_MENUS = {
+            courses_group: [
+                { id: 'back',           label: 'Back',          icon: '<line x1="19" x2="5" y1="12" y2="12"/><polyline points="12 19 5 12 12 5"/>', isBack: true },
+                { id: 'courses',        label: 'Courses',       icon: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>' },
+                { id: 'quizzes',        label: 'Quizzes',       icon: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>' },
+                { id: 'assignments',    label: 'Assignments',   icon: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>' },
+                { id: 'resources',      label: 'Resources',     icon: '<path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2"/>' }
+            ],
+            vedika_group: [
+                { id: 'back',           label: 'Back',          icon: '<line x1="19" x2="5" y1="12" y2="12"/><polyline points="12 19 5 12 12 5"/>', isBack: true },
+                { id: 'general-tutor',  label: 'Ask Vedika',    icon: '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/>' },
+                { id: 'coding-tutor',   label: 'Code Tutor',    icon: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>' },
+                { id: 'code-puzzle',    label: 'Code Puzzle',   icon: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' },
+                { id: 'viva-interview', label: 'Viva/Interview', icon: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>' }
+            ],
+            labs_group: [
+                { id: 'back',           label: 'Back',          icon: '<line x1="19" x2="5" y1="12" y2="12"/><polyline points="12 19 5 12 12 5"/>', isBack: true },
+                { id: 'physics-lab',    label: 'Physics Lab',   icon: '<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-9.1-4.5-15.77s-10.33-10.02-12.37-8a1 1 0 0 0-.2.27m0 .2c-2.04 2.03-.02 9.1 4.5 15.77s10.33 10.02 12.37 8a1 1 0 0 0 .2-.27"/><path d="M3.8 20.2c-2.04-2.03-.02-9.1 4.5-15.77s10.33-10.02 12.37-8a1 1 0 1 1 .2.27m0-.2c2.04 2.03.02 9.1-4.5 15.77s-10.33 10.02-12.37 8a1 1 0 1 1-.2-.27"/>' },
+                { id: 'chemistry-lab',  label: 'Chem Lab',      icon: '<path d="M10 2v4c0 1-1 2.2-1.4 2.7L5 14c-.7.7-1 1.7-1 2.6C4 19 6.2 21 9 21h6c2.8 0 5-2 5-4.4 0-1-.3-1.9-1-2.6L15.4 8.7C15 8.2 14 7 14 6V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>' },
+                { id: 'biology-lab',    label: 'Bio Lab',       icon: '<path d="m8 8 8 8"/><path d="M12 2v6"/><path d="M12 16v6"/><path d="M16 8c-2-2-6-2-8 0"/><path d="M16 16c-2 2-6 2-8 0"/><path d="M17.5 4.5c-1-1.5-3-1.5-4 0l-1.5 1.5"/><path d="M6.5 19.5c1 1.5 3 1.5 4 0l1.5-1.5"/><path d="M17.5 19.5c-1 1.5-3 1.5-4 0l-1.5-1.5"/><path d="M6.5 4.5c1-1.5 3-1.5 4 0l1.5 1.5"/>' }
+            ]
+        };
 
         const RADIUS = 105;
         const CX = 150;
@@ -642,12 +658,15 @@
         let webappConnected  = false;
         let menuOpen         = false;
         let isSpinning       = false;
+        let currentMenu      = MAIN_MENU;
 
-        /* ── initCircularMenu ── */
-        function initCircularMenu() {
+        /* ── renderMenu ── */
+        function renderMenu(items) {
+            currentMenu = items;
             circularMenu.innerHTML = '';
-            MENU_ITEMS.forEach((item, i) => {
-                const angle = (i / MENU_ITEMS.length) * 2 * Math.PI - Math.PI / 2;
+            
+            items.forEach((item, i) => {
+                const angle = (i / items.length) * 2 * Math.PI - Math.PI / 2;
                 const tx = Math.cos(angle) * RADIUS;
                 const ty = Math.sin(angle) * RADIUS;
                 
@@ -655,7 +674,6 @@
                 btn.className = 'menu-item';
                 btn.id = 'menu-' + item.id;
                 
-                // Tooltip class quadrant layout
                 let tpClass = 'tp-top';
                 if (tx > 40) tpClass = 'tp-right';
                 else if (tx < -40) tpClass = 'tp-left';
@@ -670,15 +688,49 @@
                     <span class="tooltip">${item.label}</span>
                 `;
                 
+                if (menuOpen) {
+                    btn.style.opacity = '1';
+                    btn.style.transform = `translate(${tx}px, ${ty}px) scale(1)`;
+                }
+                
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     if (isSpinning) return;
-                    toggleCircularMenu(false);
-                    triggerNavigation(item.id);
+                    
+                    if (item.isBack) {
+                        switchMenu(MAIN_MENU);
+                    } else if (item.hasSub) {
+                        switchMenu(SUB_MENUS[item.id]);
+                    } else {
+                        toggleCircularMenu(false);
+                        triggerNavigation(item.id);
+                    }
                 });
                 
                 circularMenu.appendChild(btn);
             });
+        }
+
+        /* ── switchMenu ── */
+        function switchMenu(newMenu) {
+            document.querySelectorAll('.menu-item').forEach((btn) => {
+                btn.style.opacity = '0';
+                btn.style.transform = 'translate(0, 0) scale(0)';
+            });
+            setTimeout(() => {
+                renderMenu(newMenu);
+                currentMenu.forEach((item, i) => {
+                    const btn = document.getElementById('menu-' + item.id);
+                    if (btn) {
+                        const tx = btn.style.getPropertyValue('--tx');
+                        const ty = btn.style.getPropertyValue('--ty');
+                        setTimeout(() => {
+                            btn.style.opacity = '1';
+                            btn.style.transform = `translate(${tx}, ${ty}) scale(1)`;
+                        }, i * 35);
+                    }
+                });
+            }, 250);
         }
 
         /* ── setWebappConnected ── */
@@ -697,7 +749,7 @@
             
             if (open) {
                 orbitTrack.classList.add('visible');
-                MENU_ITEMS.forEach((item, i) => {
+                currentMenu.forEach((item, i) => {
                     const btn = document.getElementById('menu-' + item.id);
                     if (btn) {
                         const tx = btn.style.getPropertyValue('--tx');
@@ -710,13 +762,15 @@
                 });
             } else {
                 orbitTrack.classList.remove('visible');
-                MENU_ITEMS.forEach((item, i) => {
-                    const btn = document.getElementById('menu-' + item.id);
-                    if (btn) {
-                        btn.style.opacity = '0';
-                        btn.style.transform = 'translate(0, 0) scale(0)';
-                    }
+                document.querySelectorAll('.menu-item').forEach((btn) => {
+                    btn.style.opacity = '0';
+                    btn.style.transform = 'translate(0, 0) scale(0)';
                 });
+                setTimeout(() => {
+                    if (!menuOpen) {
+                        renderMenu(MAIN_MENU);
+                    }
+                }, 350);
             }
         }
 
@@ -729,26 +783,37 @@
         function triggerMascotSpinAndNavigate(targetPage, forceSpin = false) {
             if (isSpinning) return;
             isSpinning = true;
+
+            let activeItems = MAIN_MENU;
+            if (SUB_MENUS.courses_group.some(item => item.id === targetPage)) {
+                activeItems = SUB_MENUS.courses_group;
+            } else if (SUB_MENUS.vedika_group.some(item => item.id === targetPage)) {
+                activeItems = SUB_MENUS.vedika_group;
+            } else if (SUB_MENUS.labs_group.some(item => item.id === targetPage)) {
+                activeItems = SUB_MENUS.labs_group;
+            }
+
+            renderMenu(activeItems);
             toggleCircularMenu(true);
 
             let currentStep = 0;
-            const totalSteps = MENU_ITEMS.length * 2;
-            const targetIndex = MENU_ITEMS.findIndex(item => item.id === targetPage);
+            const totalSteps = activeItems.length * 2;
+            const targetIndex = activeItems.findIndex(item => item.id === targetPage);
             
             const runSpinStep = () => {
                 document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active-item'));
                 
-                const currentIndex = currentStep % MENU_ITEMS.length;
-                const currentItem = MENU_ITEMS[currentIndex];
+                const currentIndex = currentStep % activeItems.length;
+                const currentItem = activeItems[currentIndex];
                 const btn = document.getElementById('menu-' + currentItem.id);
                 if (btn) btn.classList.add('active-item');
 
-                const isFinalLap = currentStep >= MENU_ITEMS.length;
+                const isFinalLap = currentStep >= activeItems.length;
                 const isTarget = currentIndex === targetIndex;
 
-                if (isFinalLap && isTarget && currentStep >= totalSteps - MENU_ITEMS.length) {
+                if (isFinalLap && isTarget && currentStep >= totalSteps - activeItems.length) {
                     setTimeout(() => {
-                        btn.classList.add('active-item');
+                        if (btn) btn.classList.add('active-item');
                         setTimeout(() => {
                             isSpinning = false;
                             toggleCircularMenu(false);
@@ -882,7 +947,7 @@
         window.triggerMascotSpinAndNavigate = triggerMascotSpinAndNavigate;
 
         // Init circular menu
-        initCircularMenu();
+        renderMenu(MAIN_MENU);
 
         /* ── Init ── */
         setMascotState('idle');
